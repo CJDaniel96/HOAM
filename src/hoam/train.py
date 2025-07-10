@@ -13,7 +13,15 @@ from .data.transforms import build_transforms
 from .data.statistics import DataStatistics
 from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
- 
+
+
+# Dynamically set float32 matmul precision to leverage Tensor Cores when availble
+if torch.cuda.is_available():
+    major, minor = torch.cuda.get_device_capability()
+    # Use 'high' precision on Ampere (compute capability >= 8.0), else 'medium'
+    presicion = 'high' if major >= 8 else 'medium'
+    torch.set_float32_matmul_precision(presicion)
+
  
 class HOAMDataModule(pl.LightningDataModule):
     def __init__(
@@ -203,6 +211,18 @@ def run(cfg: DictConfig) -> None:
     )
  
     trainer.fit(model, datamodule=data_module)
+    
+    # After training, save best model weights separately as .pt
+    best_ckpt = checkpoint.best_model_path
+    if best_ckpt:
+        # Load the lightning checkpoint
+        ckpt = torch.load(best_ckpt, map_location='cpu')
+        # Extract the state_dict
+        state_dict = ckpt.get('state_dict', ckpt)
+        # Save only the model weights
+        best_pt_path = Path(cfg.training.checkpoint_dir) / 'best.pt'
+        torch.save(state_dict, best_pt_path)
+        print(f"Saved best model weights to {best_pt_path}")
  
 if __name__ == '__main__':
     run()
