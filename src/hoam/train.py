@@ -140,14 +140,14 @@ class LightningModel(pl.LightningModule):
         imgs, labels = batch
         embeds = self(imgs)
         loss = self.criterion(embeds, labels)
-        self.log('train_loss', loss, on_step=False, on_epoch=True, logger=True)
+        self.log('train/loss', loss, on_step=False, on_epoch=True)
         return loss
  
     def validation_step(self, batch, batch_idx) -> None:
         imgs, labels = batch
         embeds = self(imgs)
         loss = self.criterion(embeds, labels)
-        self.log('val_loss', loss, on_step=False, on_epoch=True, logger=True, prog_bar=True)
+        self.log('val/loss', loss, on_step=False, on_epoch=True)
  
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
@@ -190,13 +190,12 @@ def run(cfg: DictConfig) -> None:
     checkpoint = ModelCheckpoint(
         dirpath=cfg.training.checkpoint_dir,
         filename='{epoch:02d}-{val_loss:.4f}',
-        monitor='val_loss',
-        save_top_k=3,
-        every_n_train_steps=1,
+        monitor='val/loss',
+        every_n_epochs=1,
         mode='min'
     )
     early_stop = EarlyStopping(
-        monitor='val_loss',
+        monitor='val/loss',
         patience=cfg.training.patience,
         mode='min'
     )
@@ -207,9 +206,7 @@ def run(cfg: DictConfig) -> None:
         logger=logger,
         callbacks=[checkpoint, early_stop],
         accelerator="auto",
-        devices=1,
-        log_every_n_steps=1,
-        check_val_every_n_epoch=1
+        devices=1
     )
  
     trainer.fit(model, datamodule=data_module)
