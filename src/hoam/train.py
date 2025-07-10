@@ -140,14 +140,14 @@ class LightningModel(pl.LightningModule):
         imgs, labels = batch
         embeds = self(imgs)
         loss = self.criterion(embeds, labels)
-        self.log('train_loss', loss, on_step=False, on_epoch=True)
+        self.log('train_loss', loss, on_step=False, on_epoch=True, logger=True)
         return loss
  
     def validation_step(self, batch, batch_idx) -> None:
         imgs, labels = batch
         embeds = self(imgs)
         loss = self.criterion(embeds, labels)
-        self.log('val_loss', loss, on_step=False, on_epoch=True)
+        self.log('val_loss', loss, on_step=False, on_epoch=True, logger=True, prog_bar=True)
  
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
@@ -207,7 +207,9 @@ def run(cfg: DictConfig) -> None:
         logger=logger,
         callbacks=[checkpoint, early_stop],
         accelerator="auto",
-        devices=1
+        devices=1,
+        log_every_n_steps=1,
+        check_val_every_n_epoch=1
     )
  
     trainer.fit(model, datamodule=data_module)
