@@ -192,11 +192,13 @@ def run(cfg: DictConfig) -> None:
         mode='min'
     )
  
+    # Initialize Trainer (auto handles GPU/CPU)
     trainer = pl.Trainer(
         max_epochs=cfg.training.epochs,
         logger=logger,
         callbacks=[checkpoint, early_stop],
-        gpus=1 if torch.cuda.is_available() else 0
+        accelerator="auto",
+        devices=1
     )
  
     trainer.fit(model, datamodule=data_module)
