@@ -1,0 +1,30 @@
+# configs/config.yaml
+
+# Default configs for HOAM
+
+experiment:
+  name: hoam_experiment
+
+data:
+  data_dir: "/path/to/dataset"
+  image_size: 224
+  num_workers: 4
+
+model:
+  backbone: "efficientnetv2_s"
+  pretrained: false
+  embedding_size: 128
+
+loss:
+  subcenter_margin: 0.4
+  subcenter_scale: 30.0
+  sub_centers: 3
+  triplet_margin: 0.3
+  center_loss_weight: 0.01
+
+training:
+  epochs: 40
+  lr: 1e-3
+  batch_size: 64
+  patience: 3
+  checkpoint_dir: "checkpoints"
