@@ -206,7 +206,8 @@ def run(cfg: DictConfig) -> None:
         logger=logger,
         callbacks=[checkpoint, early_stop],
         accelerator="auto",
-        devices=1
+        devices=1,
+        log_every_n_steps=1
     )
  
     trainer.fit(model, datamodule=data_module)
