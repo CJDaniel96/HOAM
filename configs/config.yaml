@@ -11,11 +11,13 @@ data:
   num_workers: 4
 
 model:
+  structure: "HOAM"
   backbone: "efficientnetv2_s"
   pretrained: false
   embedding_size: 128
 
 loss:
+  type: HybridMarginLoss
   subcenter_margin: 0.4
   subcenter_scale: 30.0
   sub_centers: 3

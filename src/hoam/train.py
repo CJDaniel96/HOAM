@@ -6,8 +6,9 @@ from omegaconf import DictConfig
 from pathlib import Path
 import torch
  
-from .models.hoam import HOAM
+from .models.hoam import HOAM, HOAMV2
 from .losses.hybrid_margin import HybridMarginLoss
+from pytorch_metric_learning.losses import SubCenterArcFaceLoss, ArcFaceLoss
 from .data.transforms import build_transforms
 from .data.statistics import DataStatistics
 from torch.utils.data import DataLoader
@@ -66,20 +67,57 @@ class LightningModel(pl.LightningModule):
     def __init__(self, cfg: DictConfig) -> None:
         super().__init__()
         self.save_hyperparameters(cfg)
-        self.model = HOAM(
+ 
+        # Model selection
+        model_map = {
+            'HOAM': HOAM,
+            'HOAMV2': HOAMV2,
+        }
+        model_cls = model_map.get(cfg.model.structure)
+        if model_cls is None:
+            raise ValueError(f"Unknown model structure: {cfg.model.structure}")
+        self.model = model_cls(
             backbone_name=cfg.model.backbone,
             pretrained=cfg.model.pretrained,
             embedding_size=cfg.model.embedding_size
         )
-        self.criterion = HybridMarginLoss(
-            num_classes=cfg.data.num_classes,
-            embedding_size=cfg.model.embedding_size,
-            subcenter_margin=cfg.loss.subcenter_margin,
-            subcenter_scale=cfg.loss.subcenter_scale,
-            sub_centers=cfg.loss.sub_centers,
-            triplet_margin=cfg.loss.triplet_margin,
-            center_loss_weight=cfg.loss.center_loss_weight
-        )
+ 
+        # Loss (criterion) selection
+        loss_map = {
+            'HybridMarginLoss': HybridMarginLoss,
+            'SubCenterArcFaceLoss': SubCenterArcFaceLoss,
+            'ArcFaceLoss': ArcFaceLoss,
+        }
+        loss_type = cfg.loss.type
+        loss_cls = loss_map.get(loss_type)
+        if loss_cls is None:
+            raise ValueError(f"Unknown loss type: {loss_type}")
+ 
+        if loss_type == 'HybridMarginLoss':
+            self.criterion = loss_cls(
+                num_classes=cfg.data.num_classes,
+                embedding_size=cfg.model.embedding_size,
+                subcenter_margin=cfg.loss.subcenter_margin,
+                subcenter_scale=cfg.loss.subcenter_scale,
+                sub_centers=cfg.loss.sub_centers,
+                triplet_margin=cfg.loss.triplet_margin,
+                center_loss_weight=cfg.loss.center_loss_weight
+            )
+        else:
+            # SubCenterArcFaceLoss and ArcFaceLoss signatures
+            params = {
+                'num_classes': cfg.data.num_classes,
+                'embedding_size': cfg.model.embedding_size,
+            }
+            # margin/scale only for ArcFace variants
+            if hasattr(cfg.loss, 'subcenter_margin'):
+                params['margin'] = cfg.loss.subcenter_margin
+            if hasattr(cfg.loss, 'subcenter_scale'):
+                params['scale'] = cfg.loss.subcenter_scale
+            if loss_type == 'SubCenterArcFaceLoss' and hasattr(cfg.loss, 'sub_centers'):
+                params['sub_centers'] = cfg.loss.sub_centers
+ 
+            self.criterion = loss_cls(**params)
  
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.model(x)
@@ -116,7 +154,11 @@ class LightningModel(pl.LightningModule):
         }
  
 # Dynamically resolve config path relative to this file
-@main(version_base="1.3", config_path=str(Path(__file__).parents[2] / "configs"), config_name="config")
+@main(
+    version_base="1.3",
+    config_path=str(Path(__file__).parents[2] / "configs"),
+    config_name="config"
+)
 def run(cfg: DictConfig) -> None:
     """
     Entry point for training via Hydra + PyTorch Lightning.
