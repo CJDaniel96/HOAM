@@ -184,6 +184,7 @@ def run(cfg: DictConfig) -> None:
         filename='{epoch:02d}-{val/loss:.4f}',
         monitor='val/loss',
         save_top_k=1,
+        every_n_train_steps=1,
         mode='min'
     )
     early_stop = EarlyStopping(
