@@ -191,7 +191,7 @@ def run(cfg: DictConfig) -> None:
         dirpath=cfg.training.checkpoint_dir,
         filename='{epoch:02d}-{val_loss:.4f}',
         monitor='val_loss',
-        save_last=True,
+        save_top_k=3,
         every_n_train_steps=1,
         mode='min'
     )
