@@ -1,27 +1,7 @@
-from typing import Tuple
 import torch
 import torch.nn as nn
-from timm import create_model
+import timm
 from .base import OrthogonalFusion, LaplacianLayer, GlobalPooling
- 
- 
-def _get_backbone_channels(
-    backbone: nn.Module,
-) -> Tuple[int, int]:
-    """
-    Helper to retrieve local and global feature channel sizes from a timm feature extractor.
- 
-    Args:
-        backbone: timm model with features_only=True
- 
-    Returns:
-        Tuple of (local_channels, global_channels)
-    """
-    # feature_info stores metadata about each stage
-    info = getattr(backbone, "feature_info")
-    channels = info.channels()
-    # take the penultimate and last feature maps
-    return channels[-2], channels[-1]
  
  
 class HOAM(nn.Module):
@@ -38,12 +18,12 @@ class HOAM(nn.Module):
     Methods:
         forward(x): Forward pass of the model.
     """
-    def __init__(self, model_name='efficientnetv2_s', pretrained=False, features_only=True, embedding_size=128) -> None:
+    def __init__(self, backbone_name='efficientnetv2_s', pretrained=False, features_only=True, embedding_size=128) -> None:
         """
         Initialize the MLGModel instance.
         """
         super().__init__()
-        self.backbone = timm.create_model(model_name, pretrained=pretrained, features_only=features_only)
+        self.backbone = timm.create_model(backbone_name, pretrained=pretrained, features_only=features_only)
         
         # Get the output feature shapes by passing a dummy input through the backbone
         dummy_input = torch.randn(1, 3, 224, 224)  # Adjust the input size as needed
@@ -125,9 +105,9 @@ class HOAM(nn.Module):
  
  
 class HOAMV2(nn.Module):
-    def __init__(self, model_name='efficientnetv2_s', pretrained=False, features_only=True, embedding_size=128) -> None:
+    def __init__(self, backbone_name='efficientnetv2_s', pretrained=False, features_only=True, embedding_size=128) -> None:
         super().__init__()
-        self.backbone = timm.create_model(model_name, pretrained=pretrained, features_only=features_only)
+        self.backbone = timm.create_model(backbone_name, pretrained=pretrained, features_only=features_only)
         dummy_input = torch.randn(1, 3, 224, 224)
         features = self.backbone(dummy_input)
         local_in_channels = features[-2].shape[1]
