@@ -200,10 +200,10 @@ def run(cfg: DictConfig) -> None:
     best_ckpt = checkpoint.best_model_path
     last_ckpt = checkpoint.last_model_path
     if model:
-        best_model = model.load_from_checkpoint(best_ckpt, cfg=cfg)
+        best_model = LightningModel.load_from_checkpoint(best_ckpt)
         torch.save(best_model.state_dict(), str(Path(cfg.training.checkpoint_dir) / 'best.pt'))
         
-        last_model = model.load_from_checkpoint(last_ckpt, cfg=cfg)
+        last_model = LightningModel.load_from_checkpoint(last_ckpt)
         torch.save(last_model.state_dict(), str(Path(cfg.training.checkpoint_dir) / 'last.pt'))
 
     # Save config and mean_std
@@ -214,7 +214,7 @@ def run(cfg: DictConfig) -> None:
  
     # Optional KNN
     if cfg.knn.enable:
-        emb_model = LightningModel.load_from_checkpoint(best_ckpt, cfg=cfg)
+        emb_model = LightningModel.load_from_checkpoint(best_ckpt)
         emb_model.eval()
         mean, std = DataStatistics.get_mean_std(Path(cfg.data.data_dir), cfg.data.image_size)
         transforms = build_transforms('train', cfg.data.image_size, mean, std)
