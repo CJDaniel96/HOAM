@@ -197,10 +197,12 @@ def run(cfg: DictConfig) -> None:
     logger = TensorBoardLogger('logs', name=cfg.experiment.name)
     checkpoint = ModelCheckpoint(
         dirpath=cfg.training.checkpoint_dir,
-        filename='{epoch:02d}-{val_loss:.4f}',
+        filename='best',
         monitor='val/loss',
-        every_n_epochs=1,
-        mode='min'
+        save_top_k=1,
+        mode='min',
+        save_last=True,
+        every_n_epochs=1        
     )
     early_stop = EarlyStopping(
         monitor='val/loss',
@@ -219,18 +221,6 @@ def run(cfg: DictConfig) -> None:
     )
  
     trainer.fit(model, datamodule=data_module)
-    
-    # After training, save best model weights separately as .pt
-    best_ckpt = checkpoint.best_model_path
-    if best_ckpt:
-        # Load the lightning checkpoint
-        ckpt = torch.load(best_ckpt, map_location='cpu')
-        # Extract the state_dict
-        state_dict = ckpt.get('state_dict', ckpt)
-        # Save only the model weights
-        best_pt_path = Path(cfg.training.checkpoint_dir) / 'best.pt'
-        torch.save(state_dict, best_pt_path)
-        print(f"Saved best model weights to {best_pt_path}")
         
     # Save the used configuration
     config_save_path = Path(cfg.training.checkpoint_dir) / 'config_used.yaml'
@@ -247,6 +237,7 @@ def run(cfg: DictConfig) -> None:
     if cfg.knn.enable:
         print("🔍 Training KNN on embeddings…")
         # 4.1 重新加载最佳模型
+        best_ckpt = checkpoint.best_model_path
         emb_model = LightningModel.load_from_checkpoint(str(best_ckpt), cfg=cfg)
         emb_model.eval()
         # 4.2 准备 dataset（同 DataModule 的 train_ds）
