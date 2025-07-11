@@ -94,61 +94,62 @@ class GeM(nn.Module):
  
  
 class LaplacianLayer(nn.Module):
-    """
-    Depthwise Laplacian convolution layer (fixed weights).
-    """
-    def __init__(self, channels: int) -> None:
+    def __init__(self, channels=1280):
+        """
+        初始化時需要傳入固定的 channel 數量。
+        """
         super().__init__()
-        kernel = torch.tensor([[0, 1, 0], [1, -4, 1], [0, 1, 0]], dtype=torch.float32)
-        kernel = kernel.unsqueeze(0).unsqueeze(0)  # shape (1,1,3,3)
-        weight = kernel.repeat(channels, 1, 1, 1)  # shape (C,1,3,3)
- 
+        # 創建一個深度可分離卷積
+        # in_channels = out_channels = groups = channels
         self.conv = nn.Conv2d(
             in_channels=channels,
             out_channels=channels,
             kernel_size=3,
             padding=1,
-            groups=channels,
+            groups=channels, # 關鍵：設置 groups = in_channels 實現深度可分離卷積
             bias=False
         )
-        self.conv.weight = nn.Parameter(weight, requires_grad=False)
- 
-    def forward(self, x: Tensor) -> Tensor:
+
+        # 創建拉普拉斯核
+        kernel = torch.tensor([[0, 1, 0], [1, -4, 1], [0, 1, 0]]).float()
+        # 將核的形狀擴展為 (out_channels, 1, H, W)，即 (channels, 1, 3, 3)
+        # 每個輸出的 channel 都使用這個相同的核
+        self.conv.weight.data = kernel.unsqueeze(0).unsqueeze(0).repeat(channels, 1, 1, 1)
+        self.conv.weight.requires_grad = False # 鎖定權重
+
+    def forward(self, x):
         return self.conv(x)
  
  
 class OrthogonalFusion(nn.Module):
-    """
-    Fuse local feature maps and global feature vectors via orthogonal decomposition.
-    """
-    def __init__(
-        self,
-        local_dim: int,
-        global_dim: int,
-    ) -> None:
+    def __init__(self, input_dim_local=1280, input_dim_global=1280):
         super().__init__()
-        if local_dim != global_dim:
-            self.projector = nn.Linear(global_dim, local_dim)
+        if input_dim_global != input_dim_local:
+            self.projector = nn.Linear(input_dim_global, input_dim_local)
         else:
             self.projector = nn.Identity()
- 
-    def forward(self, local_feat: Tensor, global_feat: Tensor) -> Tensor:
-        """
-        Args:
-            local_feat (Tensor): Local maps, shape (B, C_l, H, W)
-            global_feat (Tensor): Global vectors, shape (B, C_g)
-        Returns:
-            Tensor: Fused feature maps, shape (B, C_l + C_l, H, W)
-        """
-        B, C_l, H, W = local_feat.shape
-        g = self.projector(global_feat)  # (B, C_l)
-        g_norm = g.norm(p=2, dim=1, keepdim=True).clamp(min=1e-6)
-        u = g / g_norm  # (B, C_l)
- 
-        flat = local_feat.view(B, C_l, -1)  # (B, C_l, H*W)
-        proj = (u.unsqueeze(1) @ flat)  # (B,1,H*W)
-        proj = (u.unsqueeze(2) * proj).view(B, C_l, H, W)  # (B,C_l,H,W)
- 
-        orth = local_feat - proj
-        global_map = g.view(B, C_l, 1, 1).expand_as(orth)
-        return torch.cat([global_map, orth], dim=1)
+
+    def forward(self, local_feat, global_feat):
+        B, C_local, H, W = local_feat.shape
+        global_feat = self.projector(global_feat)
+
+        global_feat_norm = torch.norm(global_feat, p=2, dim=1, keepdim=True) + 1e-6
+        global_unit = global_feat / global_feat_norm
+        local_flat = local_feat.view(B, C_local, -1)
+
+        projection = torch.bmm(global_unit.unsqueeze(1), local_flat)
+        projection = torch.bmm(global_unit.unsqueeze(2), projection).view(B, C_local, H, W)
+
+        orthogonal_comp = local_feat - projection
+        global_map = global_feat.unsqueeze(-1).unsqueeze(-1).expand_as(orthogonal_comp)
+
+        return torch.cat([global_map, orthogonal_comp], dim=1)
+    
+class GlobalPooling(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.max_pool = nn.AdaptiveMaxPool2d(1)
+
+    def forward(self, x):
+        return torch.cat([self.avg_pool(x), self.max_pool(x)], dim=1)
