@@ -180,7 +180,6 @@ def run(cfg: DictConfig) -> None:
         monitor='val_loss',
         save_top_k=1,
         mode='min',
-        save_last=True,
         save_weights_only=True
     )
     early_stop = EarlyStopping(monitor='val_loss', patience=cfg.training.patience, mode='min')
@@ -201,10 +200,10 @@ def run(cfg: DictConfig) -> None:
     best_ckpt = checkpoint.best_model_path
     last_ckpt = checkpoint.last_model_path
     if model:
-        best_model = LightningModel.load_from_checkpoint(best_ckpt, cfg=cfg)
+        best_model = model.load_from_checkpoint(best_ckpt, cfg=cfg)
         torch.save(best_model.state_dict(), str(Path(cfg.training.checkpoint_dir) / 'best.pt'))
         
-        last_model = LightningModel.load_from_checkpoint(last_ckpt, cfg=cfg)
+        last_model = model.load_from_checkpoint(last_ckpt, cfg=cfg)
         torch.save(last_model.state_dict(), str(Path(cfg.training.checkpoint_dir) / 'last.pt'))
 
     # Save config and mean_std
