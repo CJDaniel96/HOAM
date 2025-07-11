@@ -31,6 +31,7 @@ def parse_opt(known: bool = False):
     parser.add_argument('--mode', type=str, choices=['knn', 'match'], default='knn')
     parser.add_argument('--data', type=str, required=True, help='Image or directory for inference')
     parser.add_argument('--query-image', type=str, default='', help='Query image for match mode')
+    parser.add_argument('--image-size', type=int, default=224, help='Image size for inference')
     parser.add_argument('--dataset-pkl', type=str, default='dataset.pkl', help='Pickled dataset for KNN')
     parser.add_argument('--faiss-index', type=str, default='', help='FAISS index path')
     parser.add_argument('--threshold', type=float, default=0.5, help='Threshold for match mode')
@@ -50,8 +51,7 @@ def create_inference_model(
     model_path: str,
     embedding_size: int,
     faiss_index: str,
-    threshold: float,
-    device: torch.device
+    threshold: float
 ) -> InferenceModel:
     """
     Create a PML InferenceModel with KNN or match finder.
@@ -84,6 +84,7 @@ def process_image(
 def knn_inference(
     data: str,
     inf_model: InferenceModel,
+    image_size: int,
     dataset,
     classes,
     unnormalize,
@@ -98,20 +99,20 @@ def knn_inference(
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
     if Path(data).is_file():
-        tensor, label = _knn_single(data, inf_model, dataset, classes, unnormalize, k, mean, std, save_dir, device)
+        tensor, label = _knn_single(data, inf_model, image_size, dataset, classes, unnormalize, k, mean, std, save_dir, device)
         top1[Path(data).stem] = label
     else:
         for img_path in Path(data).rglob('*.[jp][pn]g'):
             subdir = save_dir / img_path.stem
             subdir.mkdir(parents=True, exist_ok=True)
-            _, label = _knn_single(str(img_path), inf_model, dataset, classes, unnormalize, k, mean, std, subdir, device)
+            _, label = _knn_single(str(img_path), inf_model, image_size, dataset, classes, unnormalize, k, mean, std, subdir, device)
             top1[img_path.stem] = label
     (save_dir / 'top1.json').write_text(json.dumps(top1, indent=2))
     return top1
  
  
-def _knn_single(path, inf_model, dataset, classes, unnormalize, k, mean, std, save_dir, device):
-    tensor = process_image(path, build_transforms('test', dataset.transform.transforms[0].size, mean, std), device)
+def _knn_single(path, inf_model, image_size, dataset, classes, unnormalize, k, mean, std, save_dir, device):
+    tensor = process_image(path, build_transforms('test', image_size, mean, std), device)
     _, indices = inf_model.get_nearest_neighbors(tensor, k)
     idx = indices[0][0]
     label = classes[idx]
@@ -124,6 +125,7 @@ def _knn_single(path, inf_model, dataset, classes, unnormalize, k, mean, std, sa
 def match_inference(
     data: str,
     query: str,
+    image_size: int,
     inf_model: InferenceModel,
     mean,
     std,
@@ -134,8 +136,8 @@ def match_inference(
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
     def single(src):
-        t1 = process_image(src, build_transforms('test', None, mean, std), device)
-        t2 = process_image(query, build_transforms('test', None, mean, std), device)
+        t1 = process_image(src, build_transforms('test', image_size, mean, std), device)
+        t2 = process_image(query, build_transforms('test', image_size, mean, std), device)
         is_match = inf_model.is_match(t1, t2)
         sub = save_dir / ('OK' if is_match else 'NG')
         sub.mkdir(exist_ok=True)
@@ -159,16 +161,15 @@ def main(opt):
         opt.model_path,
         opt.embedding_size,
         opt.faiss_index,
-        opt.threshold,
-        device
+        opt.threshold
     )
  
     if opt.mode == 'knn':
         dataset = load_dataset(opt.dataset_pkl)
         classes = dataset.classes
-        knn_inference(opt.data, inf_model, dataset, classes, unnormalize, opt.k, mean, std, Path(opt.save_dir), device)
+        knn_inference(opt.data, inf_model, opt.image_size, dataset, classes, unnormalize, opt.k, mean, std, Path(opt.save_dir), device)
     else:
-        match_inference(opt.data, opt.query_image, inf_model, mean, std, Path(opt.save_dir), device)
+        match_inference(opt.data, opt.query_image, opt.image_size, inf_model, mean, std, Path(opt.save_dir), device)
  
  
 if __name__ == '__main__':
