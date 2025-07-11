@@ -125,8 +125,7 @@ class HOAMV2(nn.Module):
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
             nn.Linear(global_ch * 2, embedding_size),
-            nn.BatchNorm1d(embedding_size),
-            nn.ReLU(),
+            nn.BatchNorm1d(embedding_size)
         )
  
     def forward(self, x: torch.Tensor) -> torch.Tensor:
