@@ -176,7 +176,7 @@ def run(cfg: DictConfig) -> None:
     logger = TensorBoardLogger('logs', name=cfg.experiment.name)
     checkpoint = ModelCheckpoint(
         dirpath=cfg.training.checkpoint_dir,
-        filename='best',
+        filename='epoch={epoch}-step={step}-val_loss={val_loss:.4f}}',
         monitor='val_loss',
         save_top_k=1,
         mode='min',
