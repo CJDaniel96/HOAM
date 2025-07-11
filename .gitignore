@@ -64,4 +64,7 @@ coverage.xml
 *.zip
 *.tar.gz
 
+# Image datasets
 datasets/
+*.jpg
+*.jpeg
