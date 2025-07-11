@@ -34,6 +34,7 @@ def load_model(
         state = state['state_dict']
     model.load_state_dict(state)
     model.eval()
+    model.cuda()
     return model
  
  
