@@ -181,7 +181,8 @@ def run(cfg: DictConfig) -> None:
         save_top_k=1,
         mode='min',
         save_last='link',
-        every_n_epochs=1
+        every_n_epochs=1,
+        save_weights_only=True
     )
     early_stop = EarlyStopping(monitor='val_loss', patience=cfg.training.patience, mode='min')
  
