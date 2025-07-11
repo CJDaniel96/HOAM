@@ -3,6 +3,9 @@ import torch
 import shutil
 import joblib
 import os
+
+os.environ["PL_DISABLE_WORKER_NUM_WARNING"] = "1"
+
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from hydra import main
@@ -37,16 +40,10 @@ class HOAMDataModule(pl.LightningDataModule):
         num_workers: int
     ) -> None:
         super().__init__()
-        
-        cpu_count = os.cpu_count() or 1
-        if num_workers and num_workers > 0:
-            self.num_workers = min(num_workers, cpu_count)
-        else:
-            self.num_workers = max(1, cpu_count // 2)
-
         self.data_dir = Path(data_dir)
         self.image_size = image_size
         self.batch_size = batch_size
+        self.num_workers = num_workers
 
     def setup(self, stage=None) -> None:
         mean, std = DataStatistics.get_mean_std(
