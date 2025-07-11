@@ -176,12 +176,11 @@ def run(cfg: DictConfig) -> None:
     logger = TensorBoardLogger('logs', name=cfg.experiment.name)
     checkpoint = ModelCheckpoint(
         dirpath=cfg.training.checkpoint_dir,
-        filename='best',
+        filename='{epoch}-{val_loss:.4f}',
         monitor='val_loss',
         save_top_k=1,
         mode='min',
-        save_last='link',
-        every_n_epochs=1,
+        save_last=True,
         save_weights_only=True
     )
     early_stop = EarlyStopping(monitor='val_loss', patience=cfg.training.patience, mode='min')
@@ -197,6 +196,13 @@ def run(cfg: DictConfig) -> None:
     )
  
     trainer.fit(model, datamodule=data_module)
+    
+    # Save best and last weights
+    best_ckpt = checkpoint.best_model_path
+    if best_ckpt:
+        ckpt = torch.load(best_ckpt, map_location='cpu')
+        state = ckpt.get('state_dict', ckpt)
+        torch.save(state, str(Path(cfg.training.checkpoint_dir) / 'best.pt'))
 
     # Save config and mean_std
     OmegaConf.save(config=cfg, f=str(Path(cfg.training.checkpoint_dir) / 'config_used.yaml'))
@@ -206,7 +212,6 @@ def run(cfg: DictConfig) -> None:
  
     # Optional KNN
     if cfg.knn.enable:
-        best_ckpt = checkpoint.best_model_path
         emb_model = LightningModel.load_from_checkpoint(best_ckpt, cfg=cfg)
         emb_model.eval()
         mean, std = DataStatistics.get_mean_std(Path(cfg.data.data_dir), cfg.data.image_size)
