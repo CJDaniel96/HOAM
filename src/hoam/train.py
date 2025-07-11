@@ -1,11 +1,15 @@
 import pytorch_lightning as pl
+import torch
+import shutil
+import joblib
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from hydra import main
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from pathlib import Path
-import torch
- 
+from pytorch_metric_learning.utils.inference import InferenceModel, MatchFinder
+from pytorch_metric_learning.distances import CosineSimilarity
+
 from .models.hoam import HOAM, HOAMV2
 from .losses.hybrid_margin import HybridMarginLoss
 from pytorch_metric_learning.losses import SubCenterArcFaceLoss, ArcFaceLoss
@@ -223,6 +227,41 @@ def run(cfg: DictConfig) -> None:
         best_pt_path = Path(cfg.training.checkpoint_dir) / 'best.pt'
         torch.save(state_dict, best_pt_path)
         print(f"Saved best model weights to {best_pt_path}")
+        
+    # Save the used configuration
+    config_save_path = Path(cfg.training.checkpoint_dir) / 'config_used.yaml'
+    OmegaConf.save(config=cfg, f=str(config_save_path))
+    print(f"Training configuration saved to: {config_save_path}")
+ 
+    # Copy mean_std.json to checkpoint directory
+    mean_src = Path(cfg.data.data_dir) / 'mean_std.json'
+    if mean_src.exists():
+        mean_dst = Path(cfg.training.checkpoint_dir) / 'mean_std.json'
+        shutil.copy(str(mean_src), str(mean_dst))
+        print(f"Copied mean/std JSON to: {mean_dst}")
+
+    if cfg.knn.enable:
+        print("🔍 Training KNN on embeddings…")
+        # 4.1 重新加载最佳模型
+        emb_model = LightningModel.load_from_checkpoint(str(best_ckpt), cfg=cfg)
+        emb_model.eval()
+        # 4.2 准备 dataset（同 DataModule 的 train_ds）
+        mean, std = DataStatistics.get_mean_std(Path(cfg.data.data_dir), cfg.data.image_size)
+        transforms = build_transforms("train", cfg.data.image_size, mean, std)
+        dataset = ImageFolder(str(Path(cfg.data.data_dir) / "train"), transforms)
+        # 4.3 初始化 PML InferenceModel
+        match_finder = MatchFinder(distance=CosineSimilarity(), threshold=cfg.knn.threshold)
+        inf_model = InferenceModel(emb_model, match_finder=match_finder)
+        # 4.4 训练 KNN index
+        inf_model.train_knn(dataset, k=cfg.knn.k)
+        # 4.5 保存 index 与 dataset
+        inf_model.save_knn_func(str(Path(cfg.training.checkpoint_dir) / cfg.knn.index_path))
+        joblib.dump(dataset, str(Path(cfg.training.checkpoint_dir) / cfg.knn.dataset_pkl))
+        print(f"KNN index saved to {cfg.knn.index_path}")
+        print(f"Dataset pkl saved to {cfg.knn.dataset_pkl}")
+ 
+    print("Training run complete.")
+
  
 if __name__ == '__main__':
     run()
