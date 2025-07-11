@@ -50,7 +50,8 @@ def create_inference_model(
     model_path: str,
     embedding_size: int,
     faiss_index: str,
-    threshold: float
+    threshold: float,
+    device: torch.device
 ) -> InferenceModel:
     """
     Create a PML InferenceModel with KNN or match finder.
@@ -60,7 +61,7 @@ def create_inference_model(
     inf_model = InferenceModel(model, match_finder=match_finder)
     if faiss_index:
         inf_model.load_knn_func(faiss_index)
-    return inf_model
+    return inf_model.eval().to(device)
  
  
 def load_dataset(dataset_pkl: str):
@@ -89,27 +90,28 @@ def knn_inference(
     k: int,
     mean,
     std,
-    save_dir: Path
+    save_dir: Path,
+    device: torch.device
 ):
     """Run KNN inference on single image or directory."""
     top1 = {}
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
     if Path(data).is_file():
-        tensor, label = _knn_single(data, inf_model, dataset, classes, unnormalize, k, mean, std, save_dir)
+        tensor, label = _knn_single(data, inf_model, dataset, classes, unnormalize, k, mean, std, save_dir, device)
         top1[Path(data).stem] = label
     else:
         for img_path in Path(data).rglob('*.[jp][pn]g'):
             subdir = save_dir / img_path.stem
             subdir.mkdir(parents=True, exist_ok=True)
-            _, label = _knn_single(str(img_path), inf_model, dataset, classes, unnormalize, k, mean, std, subdir)
+            _, label = _knn_single(str(img_path), inf_model, dataset, classes, unnormalize, k, mean, std, subdir, device)
             top1[img_path.stem] = label
     (save_dir / 'top1.json').write_text(json.dumps(top1, indent=2))
     return top1
  
  
-def _knn_single(path, inf_model, dataset, classes, unnormalize, k, mean, std, save_dir):
-    tensor = process_image(path, build_transforms('test', dataset.transform.transforms[0].size, mean, std), inf_model.device)
+def _knn_single(path, inf_model, dataset, classes, unnormalize, k, mean, std, save_dir, device):
+    tensor = process_image(path, build_transforms('test', dataset.transform.transforms[0].size, mean, std), device)
     _, indices = inf_model.get_nearest_neighbors(tensor, k)
     idx = indices[0][0]
     label = classes[idx]
@@ -125,14 +127,15 @@ def match_inference(
     inf_model: InferenceModel,
     mean,
     std,
-    save_dir: Path
+    save_dir: Path,
+    device: torch.device
 ):
     """Run match inference single or directory."""
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
     def single(src):
-        t1 = process_image(src, build_transforms('test', None, mean, std), inf_model.device)
-        t2 = process_image(query, build_transforms('test', None, mean, std), inf_model.device)
+        t1 = process_image(src, build_transforms('test', None, mean, std), device)
+        t2 = process_image(query, build_transforms('test', None, mean, std), device)
         is_match = inf_model.is_match(t1, t2)
         sub = save_dir / ('OK' if is_match else 'NG')
         sub.mkdir(exist_ok=True)
@@ -149,21 +152,23 @@ def main(opt):
     mean_std_file = Path(opt.mean_std_file)
     mean, std = DataStatistics.get_mean_std(mean_std_file.parent, image_size=None)
     unnormalize = UnNormalize(mean, std)
- 
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    
     inf_model = create_inference_model(
         opt.model_structure,
         opt.model_path,
         opt.embedding_size,
         opt.faiss_index,
-        opt.threshold
+        opt.threshold,
+        device
     )
  
     if opt.mode == 'knn':
         dataset = load_dataset(opt.dataset_pkl)
         classes = dataset.classes
-        knn_inference(opt.data, inf_model, dataset, classes, unnormalize, opt.k, mean, std, Path(opt.save_dir))
+        knn_inference(opt.data, inf_model, dataset, classes, unnormalize, opt.k, mean, std, Path(opt.save_dir), device)
     else:
-        match_inference(opt.data, opt.query_image, inf_model, mean, std, Path(opt.save_dir))
+        match_inference(opt.data, opt.query_image, inf_model, mean, std, Path(opt.save_dir), device)
  
  
 if __name__ == '__main__':
