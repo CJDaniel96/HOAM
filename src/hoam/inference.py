@@ -109,7 +109,7 @@ def knn_inference(
  
  
 def _knn_single(path, inf_model, dataset, classes, unnormalize, k, mean, std, save_dir):
-    tensor = process_image(path, build_transforms('test', dataset.transform.transforms[0].size, mean, std), inf_model.model.device)
+    tensor = process_image(path, build_transforms('test', dataset.transform.transforms[0].size, mean, std), inf_model.device)
     _, indices = inf_model.get_nearest_neighbors(tensor, k)
     idx = indices[0][0]
     label = classes[idx]
@@ -131,8 +131,8 @@ def match_inference(
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
     def single(src):
-        t1 = process_image(src, build_transforms('test', None, mean, std), inf_model.model.device)
-        t2 = process_image(query, build_transforms('test', None, mean, std), inf_model.model.device)
+        t1 = process_image(src, build_transforms('test', None, mean, std), inf_model.device)
+        t2 = process_image(query, build_transforms('test', None, mean, std), inf_model.device)
         is_match = inf_model.is_match(t1, t2)
         sub = save_dir / ('OK' if is_match else 'NG')
         sub.mkdir(exist_ok=True)
