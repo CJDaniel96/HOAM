@@ -61,7 +61,7 @@ def create_inference_model(
     inf_model = InferenceModel(model, match_finder=match_finder)
     if faiss_index:
         inf_model.load_knn_func(faiss_index)
-    return inf_model.eval().to(device)
+    return inf_model.to(device)
  
  
 def load_dataset(dataset_pkl: str):
