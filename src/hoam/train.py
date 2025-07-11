@@ -2,6 +2,7 @@ import os
 import torch
 import shutil
 import joblib
+import tempfile
 from pathlib import Path
 from hydra import main
 from omegaconf import DictConfig, OmegaConf
@@ -171,6 +172,12 @@ def run(cfg: DictConfig) -> None:
         batch_size=cfg.training.batch_size,
         num_workers=cfg.data.num_workers
     )
+    tmp_dir = Path(cfg.training.checkpoint_dir) / 'tmp'
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    tempfile.tempdir = str(tmp_dir)
+    os.environ['TMP'] = str(tmp_dir)
+    os.environ['TEMP'] = str(tmp_dir)
+    
     model = LightningModel(cfg)
  
     logger = TensorBoardLogger('logs', name=cfg.experiment.name)
