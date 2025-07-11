@@ -202,10 +202,10 @@ def run(cfg: DictConfig) -> None:
     last_ckpt = checkpoint.last_model_path
     if model:
         best_model = LightningModel.load_from_checkpoint(best_ckpt)
-        torch.save(best_model.state_dict(), str(Path(cfg.training.checkpoint_dir) / 'best.pt'))
+        torch.save(best_model.model.state_dict(), str(Path(cfg.training.checkpoint_dir) / 'best.pt'))
         
         last_model = LightningModel.load_from_checkpoint(last_ckpt)
-        torch.save(last_model.state_dict(), str(Path(cfg.training.checkpoint_dir) / 'last.pt'))
+        torch.save(last_model.model.state_dict(), str(Path(cfg.training.checkpoint_dir) / 'last.pt'))
 
     # Save config and mean_std
     OmegaConf.save(config=cfg, f=str(Path(cfg.training.checkpoint_dir) / 'config_used.yaml'))
@@ -221,7 +221,7 @@ def run(cfg: DictConfig) -> None:
         transforms = build_transforms('train', cfg.data.image_size, mean, std)
         dataset = ImageFolder(Path(cfg.data.data_dir) / 'train', transforms)
         match_finder = MatchFinder(distance=CosineSimilarity(), threshold=cfg.knn.threshold)
-        inf_model = InferenceModel(emb_model, match_finder=match_finder)
+        inf_model = InferenceModel(emb_model.model, match_finder=match_finder)
         inf_model.train_knn(dataset, k=cfg.knn.k)
         inf_model.save_knn_func(str(Path(cfg.training.checkpoint_dir) / cfg.knn.index_path))
         joblib.dump(dataset, str(Path(cfg.training.checkpoint_dir) / cfg.knn.dataset_pkl))
