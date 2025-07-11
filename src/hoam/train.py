@@ -196,13 +196,16 @@ def run(cfg: DictConfig) -> None:
     )
  
     trainer.fit(model, datamodule=data_module)
-    
+
     # Save best and last weights
     best_ckpt = checkpoint.best_model_path
-    if best_ckpt:
-        ckpt = torch.load(best_ckpt, map_location='cpu')
-        state = ckpt.get('state_dict', ckpt)
-        torch.save(state, str(Path(cfg.training.checkpoint_dir) / 'best.pt'))
+    last_ckpt = checkpoint.last_model_path
+    if model:
+        best_model = LightningModel.load_from_checkpoint(best_ckpt, cfg=cfg)
+        torch.save(best_model.state_dict(), str(Path(cfg.training.checkpoint_dir) / 'best.pt'))
+        
+        last_model = LightningModel.load_from_checkpoint(last_ckpt, cfg=cfg)
+        torch.save(last_model.state_dict(), str(Path(cfg.training.checkpoint_dir) / 'last.pt'))
 
     # Save config and mean_std
     OmegaConf.save(config=cfg, f=str(Path(cfg.training.checkpoint_dir) / 'config_used.yaml'))
