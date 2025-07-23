@@ -7,13 +7,15 @@ from hydra import main
 from omegaconf import DictConfig, OmegaConf
 from pytorch_metric_learning.utils.inference import InferenceModel, MatchFinder
 from pytorch_metric_learning.distances import CosineSimilarity
+from pytorch_metric_learning.samplers import MPerClassSampler
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import LambdaLR
  
 # Use Lightning umbrella (v2+) instead of pytorch_lightning
 import lightning.pytorch as pl
 from lightning.pytorch.loggers import TensorBoardLogger
-from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
+from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping, StochasticWeightAveraging
  
 from .models.hoam import HOAM, HOAMV2
 from .losses.hybrid_margin import HybridMarginLoss
@@ -26,6 +28,15 @@ if torch.cuda.is_available():
     major, minor = torch.cuda.get_device_capability()
     precision = 'high' if major >= 8 else 'medium'
     torch.set_float32_matmul_precision(precision)
+    
+
+def build_sampler(dataset: ImageFolder, m_per_class: int, batch_size: int) -> MPerClassSampler:
+    return MPerClassSampler(
+        labels=[y for _, y in dataset.samples],
+        m=m_per_class,
+        batch_size=batch_size,
+        length_before_new_iter=len(dataset) 
+    )
  
  
 class HOAMDataModule(pl.LightningDataModule):
@@ -65,10 +76,11 @@ class HOAMDataModule(pl.LightningDataModule):
         )
  
     def train_dataloader(self) -> DataLoader:
+        sampler = build_sampler(self.train_ds, 4, self.batch_size)
         return DataLoader(
             self.train_ds,
             batch_size=self.batch_size,
-            shuffle=True,
+            sampler=sampler,
             num_workers=self.num_workers,
             pin_memory=True,
             persistent_workers=(self.num_workers > 0),
@@ -136,24 +148,56 @@ class LightningModel(pl.LightningModule):
             if loss_type == 'SubCenterArcFaceLoss' and hasattr(cfg.loss, 'sub_centers'):
                 params['sub_centers'] = cfg.loss.sub_centers
             self.criterion = loss_cls(**params)
- 
+            
+        self.freeze_backbone = cfg.training.freeze_backbone_epochs
+        self.ema = None
+        
+    def set_backbone_requies_grad(self, requires_grad: bool) -> None:
+        for param in self.model.backbone.parameters():
+            param.requires_grad = requires_grad
+        
+    def on_train_start(self):
+        if self.freeze_backbone > 0:
+            self.set_backbone_requies_grad(False)
+
+    def on_train_epoch_end(self):
+        if self.current_epoch == self.freeze_backbone:
+            self.set_backbone_requies_grad(True)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.model(x)
  
     def training_step(self, batch, batch_idx) -> torch.Tensor:
         imgs, labels = batch
         loss = self.criterion(self(imgs), labels)
-        self.log('train_loss', loss, on_epoch=True, logger=True)
+        self.log('train_loss', loss, on_epoch=True, logger=True, batch_size=imgs.size(0))
         return loss
  
     def validation_step(self, batch, batch_idx) -> None:
         imgs, labels = batch
-        loss = self.criterion(self(imgs), labels)
+        with torch.no_grad():
+            loss = self.criterion(self(imgs), labels)
         self.log('val_loss', loss, on_epoch=True, logger=True, prog_bar=True)
  
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.training.lr)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.hparams.training.epochs)
+        backbone_params = [p for n, p in self.named_parameters() if 'backbone' in n and p.requires_grad]
+        head_params = [p for n, p in self.named_parameters() if 'backbone' not in n and p.requires_grad]
+        optimizer = torch.optim.AdamW([
+            {'params': backbone_params, 'lr': self.hparams.training.lr * 0.1},
+            {'params': head_params, 'lr': self.hparams.training.lr}
+        ], weight_decay=self.hparams.training.weight_decay)
+        
+        epochs = self.hparams.training.epochs
+        warmup = int(epochs * 0.05)
+        
+        def lr_lambda(current_epoch):
+            if current_epoch < warmup:
+                return float(current_epoch + 1) / float(warmup)
+            # cosine decay to 0
+            progress = (current_epoch - warmup) / max(1, epochs - warmup)
+            return 0.5 * (1. + torch.cos(torch.pi * progress))
+        
+        scheduler = LambdaLR(optimizer, lr_lambda)
         return {
             'optimizer': optimizer,
             'lr_scheduler': {'scheduler': scheduler, 'interval': 'epoch'}
@@ -189,7 +233,7 @@ def run(cfg: DictConfig) -> None:
     trainer = pl.Trainer(
         max_epochs=cfg.training.epochs,
         logger=logger,
-        callbacks=[checkpoint, early_stop],
+        callbacks=[checkpoint, early_stop, StochasticWeightAveraging(swa_epoch_start=0.75)],
         accelerator="auto",
         devices=1,
         log_every_n_steps=1,

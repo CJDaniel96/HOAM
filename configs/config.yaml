@@ -26,8 +26,10 @@ loss:
 
 training:
   epochs: 40
-  lr: 1e-3
+  lr: 3e-4
+  weight_decay: 1e-4
   batch_size: 64
+  freeze_backbone_epochs: 10
   patience: 3
   checkpoint_dir: "checkpoints"
 
