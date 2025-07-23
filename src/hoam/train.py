@@ -195,7 +195,9 @@ class LightningModel(pl.LightningModule):
                 return float(current_epoch + 1) / float(warmup)
             # cosine decay to 0
             progress = (current_epoch - warmup) / max(1, epochs - warmup)
-            return 0.5 * (1. + torch.cos(torch.pi * progress))
+            progress_t = torch.tensor(progress)
+            factor = 0.5 * (1. + torch.cos(torch.pi * progress_t)).item()
+            return [factor, factor]
         
         scheduler = LambdaLR(optimizer, lr_lambda)
         return {
