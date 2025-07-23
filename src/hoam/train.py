@@ -229,11 +229,17 @@ def run(cfg: DictConfig) -> None:
         save_weights_only=True
     )
     early_stop = EarlyStopping(monitor='val_loss', patience=cfg.training.patience, mode='min')
+    swa = StochasticWeightAveraging(
+        swa_lrs=[cfg.training.lr * 0.01, cfg.training.lr * 0.1],
+        swa_epoch_start=0.75,
+        annealing_epochs=10,
+        annealing_strategy='cos'
+    )
  
     trainer = pl.Trainer(
         max_epochs=cfg.training.epochs,
         logger=logger,
-        callbacks=[checkpoint, early_stop, StochasticWeightAveraging(swa_epoch_start=0.75)],
+        callbacks=[checkpoint, early_stop, swa],
         accelerator="auto",
         devices=1,
         log_every_n_steps=1,
