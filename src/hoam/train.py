@@ -250,7 +250,8 @@ def run(cfg: DictConfig) -> None:
     )
  
     trainer = pl.Trainer(
-        max_epochs=cfg.training.epochs,
+        min_epochs=cfg.training.min_epochs,
+        max_epochs=cfg.training.max_epochs,
         logger=logger,
         callbacks=[checkpoint, early_stop, swa]
     )

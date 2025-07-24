@@ -25,7 +25,8 @@ loss:
   center_loss_weight: 0.01
 
 training:
-  epochs: 40
+  min_epochs: 0
+  max_epochs: 40
   lr: 3e-4
   weight_decay: 1e-4
   batch_size: 64
