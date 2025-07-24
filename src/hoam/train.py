@@ -160,9 +160,13 @@ class LightningModel(pl.LightningModule):
         if self.freeze_backbone > 0:
             self.set_backbone_requies_grad(False)
 
-    def on_train_epoch_end(self):
+    def on_train_epoch_end(self, outputs):
         if self.current_epoch == self.freeze_backbone:
             self.set_backbone_requies_grad(True)
+            
+        avg_loss = torch.stack([x['loss'] for x in outputs]).mean()
+        tb = self.logger.experiment
+        tb.add_scalar('train_loss', avg_loss, self.current_epoch)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.model(x)
@@ -170,14 +174,14 @@ class LightningModel(pl.LightningModule):
     def training_step(self, batch, batch_idx) -> torch.Tensor:
         imgs, labels = batch
         loss = self.criterion(self(imgs), labels)
-        self.log('train_loss', loss, on_epoch=True, logger=True, batch_size=imgs.size(0))
+        self.log('train_loss', loss, on_step=False, on_epoch=True, logger=True, batch_size=imgs.size(0))
         return loss
  
     def validation_step(self, batch, batch_idx) -> None:
         imgs, labels = batch
         with torch.no_grad():
             loss = self.criterion(self(imgs), labels)
-        self.log('val_loss', loss, on_epoch=True, logger=True, prog_bar=True)
+        self.log('val_loss', loss, on_step=False, on_epoch=True, logger=True, prog_bar=True)
  
     def configure_optimizers(self):
         backbone_params = [p for n, p in self.named_parameters() if 'backbone' in n and p.requires_grad]
@@ -240,11 +244,7 @@ def run(cfg: DictConfig) -> None:
     trainer = pl.Trainer(
         max_epochs=cfg.training.epochs,
         logger=logger,
-        callbacks=[checkpoint, early_stop, swa],
-        accelerator="auto",
-        devices=1,
-        log_every_n_steps=50,
-        check_val_every_n_epoch=1
+        callbacks=[checkpoint, early_stop, swa]
     )
  
     trainer.fit(model, datamodule=data_module)
