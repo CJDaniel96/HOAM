@@ -242,7 +242,9 @@ def run(cfg: DictConfig) -> None:
         logger=logger,
         callbacks=[checkpoint, early_stop, swa],
         accelerator="auto",
-        devices=1
+        devices=1,
+        log_every_n_steps=50,
+        check_val_every_n_epoch=1
     )
  
     trainer.fit(model, datamodule=data_module)
