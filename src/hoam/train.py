@@ -199,7 +199,7 @@ class LightningModel(pl.LightningModule):
             {'params': head_params, 'lr': self.hparams.training.lr}
         ], weight_decay=self.hparams.training.weight_decay)
         
-        epochs = self.hparams.training.epochs
+        epochs = self.hparams.training.max_epochs
         warmup = int(epochs * 0.05)
         
         def lr_lambda(current_epoch):
