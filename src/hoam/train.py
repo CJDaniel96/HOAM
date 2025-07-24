@@ -274,7 +274,7 @@ def run(cfg: DictConfig) -> None:
         dataset = ImageFolder(Path(cfg.data.data_dir) / 'train', transforms)
         match_finder = MatchFinder(distance=CosineSimilarity(), threshold=cfg.knn.threshold)
         inf_model = InferenceModel(emb_model.model, match_finder=match_finder)
-        inf_model.train_knn(dataset, k=cfg.knn.k)
+        inf_model.train_knn(dataset)
         inf_model.save_knn_func(str(Path(cfg.training.checkpoint_dir) / cfg.knn.index_path))
         joblib.dump(dataset, str(Path(cfg.training.checkpoint_dir) / cfg.knn.dataset_pkl))
  

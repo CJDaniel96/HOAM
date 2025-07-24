@@ -35,7 +35,6 @@ training:
 
 knn:
   enable: false
-  k: 10
   threshold: 0.5
   index_path: "knn.index"
   dataset_pkl: "dataset.pkl"
