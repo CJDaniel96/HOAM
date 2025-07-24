@@ -161,27 +161,35 @@ class LightningModel(pl.LightningModule):
             self.set_backbone_requies_grad(False)
 
     def on_train_epoch_end(self):
+        train_loss = self.trainer.callback_metrics.get('train_loss')
+        if train_loss is not None:
+            self.logger.experiment.add_scalar('Loss/train_epoch', train_loss, self.current_epoch)
+
         if self.current_epoch == self.freeze_backbone:
             self.set_backbone_requies_grad(True)
-            self.log('backbone_unfrozen', 1.0, on_epoch=True)
             
         current_lr = self.trainer.optimizers[0].param_groups[0]['lr']
         self.log('learning_rate', current_lr, on_epoch=True, logger=True)
+        
+    def on_validation_epoch_end(self):
+        val_loss = self.trainer.callback_metrics.get('val_loss')
+        if val_loss is not None:
+            self.logger.experiment.add_scalar('Loss/val_epoch', val_loss, self.current_epoch)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.model(x)
- 
+
     def training_step(self, batch, batch_idx) -> torch.Tensor:
         imgs, labels = batch
         loss = self.criterion(self(imgs), labels)
-        self.log('train_loss', loss, on_step=False, on_epoch=True, logger=True, prog_bar=True, batch_size=imgs.size(0))
+        self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=imgs.size(0))
         return loss
  
     def validation_step(self, batch, batch_idx) -> None:
         imgs, labels = batch
         with torch.no_grad():
             loss = self.criterion(self(imgs), labels)
-        self.log('val_loss', loss, on_step=False, on_epoch=True, logger=True, prog_bar=True, batch_size=imgs.size(0))
+        self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=imgs.size(0))
  
     def configure_optimizers(self):
         backbone_params = [p for n, p in self.named_parameters() if 'backbone' in n and p.requires_grad]
