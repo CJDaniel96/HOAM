@@ -76,13 +76,11 @@ class HOAM(nn.Module):
  
  
 class HOAMV2(nn.Module):
-    def __init__(self, backbone_name='efficientnetv2_s', pretrained=False, features_only=True, embedding_size=128) -> None:
+    def __init__(self, backbone_name='efficientnetv2_rw_s', pretrained=False, features_only=True, embedding_size=128) -> None:
         super().__init__()
-        self.backbone = timm.create_model(backbone_name, pretrained=pretrained, features_only=features_only)
-        dummy_input = torch.randn(1, 3, 224, 224)
-        features = self.backbone(dummy_input)
-        local_in_channels = features[-2].shape[1]
-        global_in_channels = features[-1].shape[1]
+        self.backbone = timm.create_model(backbone_name, pretrained=pretrained, features_only=features_only)        
+        local_in_channels = self.backbone.feature_info.channels()[-2]
+        global_in_channels = self.backbone.feature_info.channels()[-1]
 
         self.local_branch_conv = nn.Sequential(
             nn.Conv2d(local_in_channels, 1280, 1, 1, bias=False),
