@@ -34,6 +34,7 @@ def build_transforms(
     if mode == 'train':
         transform_list = [
             transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+            transforms.RandAugment(num_ops=2, magnitude=9),
             *transform_list,
             transforms.Normalize(mean=mean, std=std),
         ]

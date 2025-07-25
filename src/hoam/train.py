@@ -195,7 +195,7 @@ class LightningModel(pl.LightningModule):
         backbone_params = [p for n, p in self.named_parameters() if 'backbone' in n and p.requires_grad]
         head_params = [p for n, p in self.named_parameters() if 'backbone' not in n and p.requires_grad]
         optimizer = torch.optim.AdamW([
-            {'params': backbone_params, 'lr': self.hparams.training.lr * 0.1},
+            {'params': backbone_params, 'lr': self.hparams.training.lr * 0.05},
             {'params': head_params, 'lr': self.hparams.training.lr}
         ], weight_decay=self.hparams.training.weight_decay)
         
