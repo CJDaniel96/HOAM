@@ -8,6 +8,8 @@ from torch.utils.data import DataLoader, Dataset
 from pytorch_metric_learning.utils.accuracy_calculator import AccuracyCalculator
 from sklearn.metrics import silhouette_score
 
+from .metrics import classification_metrics, save_classification_outputs
+
 
 def evaluate_model_on_testset(
     model: torch.nn.Module,
@@ -15,6 +17,7 @@ def evaluate_model_on_testset(
     save_dir: Union[str, Path],
     batch_size: int = 64,
     device: str = 'cuda',
+    knn_k: int = 1,
 ) -> Dict[str, float]:
     """
     Evaluate a model on a test dataset using metric-learning metrics.
@@ -25,9 +28,11 @@ def evaluate_model_on_testset(
         save_dir: Directory to save metrics (JSON + CSV).
         batch_size: Batch size for the DataLoader.
         device: Device to run inference on ('cuda' or 'cpu').
+        knn_k: k for the leave-one-out k-NN used for classification metrics.
 
     Returns:
-        Dictionary of evaluation metrics.
+        Dictionary of evaluation metrics. Also writes test_metrics.{json,csv},
+        classification_report.csv and confusion_matrix.csv to save_dir.
     """
     save_path = Path(save_dir)
     save_path.mkdir(parents=True, exist_ok=True)
@@ -65,6 +70,16 @@ def evaluate_model_on_testset(
     metrics['silhouette_score'] = float(
         silhouette_score(embeddings.numpy(), labels.numpy())
     )
+
+    # Classification metrics via leave-one-out k-NN: accuracy / precision /
+    # recall / F1 / confusion matrix / confidence. Class names come from the
+    # dataset when available (e.g. ImageFolder.classes).
+    class_names = getattr(test_dataset, 'classes', None)
+    cls_summary, per_class, confusion_df = classification_metrics(
+        embeddings, labels, class_names=class_names, k=knn_k
+    )
+    metrics.update(cls_summary)
+    save_classification_outputs(per_class, confusion_df, save_path)
 
     with open(save_path / 'test_metrics.json', 'w') as f:
         json.dump(metrics, f, indent=2)

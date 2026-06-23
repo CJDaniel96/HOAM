@@ -54,7 +54,8 @@ def train(config_dir: str, config_name: str):  # noqa: D103
 @click.option("--image-size", type=int, default=224, help="Image size for resizing")
 @click.option("--mean-std-file", type=click.Path(exists=True), default=None, help="JSON of training mean/std; recommended for reproducible normalization")
 @click.option("--batch-size", type=int, default=64, help="Batch size for evaluation")
-def evaluate(model_path, test_data, save_dir, model_structure, embedding_size, image_size, mean_std_file, batch_size):  # noqa: D103
+@click.option("--knn-k", type=int, default=1, help="k for the k-NN classifier used in classification metrics")
+def evaluate(model_path, test_data, save_dir, model_structure, embedding_size, image_size, mean_std_file, batch_size, knn_k):  # noqa: D103
     """
     Evaluate a trained model on a test dataset.
     """
@@ -77,7 +78,7 @@ def evaluate(model_path, test_data, save_dir, model_structure, embedding_size, i
     model = load_model(model_structure, model_path, embedding_size, device=device)
  
     # Run evaluation
-    evaluate_model_on_testset(model, test_ds, save_dir, batch_size, device)
+    evaluate_model_on_testset(model, test_ds, save_dir, batch_size, device, knn_k=knn_k)
     click.echo(f"Evaluation results saved to {save_dir}")
  
  
