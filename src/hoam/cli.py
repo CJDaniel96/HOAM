@@ -2,7 +2,7 @@ import json
 
 import click
 from pathlib import Path
-from hydra import initialize, compose
+from hydra import initialize_config_dir, compose
 from omegaconf import DictConfig
 from .train import run as hydra_run
 from .evaluate import evaluate_model_on_testset
@@ -39,8 +39,10 @@ def train(config_dir: str, config_name: str):  # noqa: D103
     """
     Train a model using Hydra config + PyTorch Lightning.
     """
-    config_dir = Path(config_dir)
-    with initialize(config_path=str(config_dir), job_name="hoam_train"):
+    # Resolve to an absolute path: initialize_config_dir avoids hydra.initialize's
+    # "relative to the caller module" rule, which previously pointed at src/hoam/configs.
+    config_dir = Path(config_dir).resolve()
+    with initialize_config_dir(config_dir=str(config_dir), job_name="hoam_train"):
         cfg: DictConfig = compose(config_name=config_name)
         hydra_run(cfg)
  
