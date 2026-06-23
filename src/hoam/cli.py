@@ -1,3 +1,5 @@
+import json
+
 import click
 from pathlib import Path
 from hydra import initialize, compose
@@ -7,6 +9,7 @@ from .evaluate import evaluate_model_on_testset
 from .inference import main as inference_main, parse_opt as parse_infer_opt
 from .data.statistics import DataStatistics
 from .data.transforms import build_transforms
+from .utils import load_model
 from torchvision.datasets import ImageFolder
 import torch
  
@@ -46,23 +49,32 @@ def train(config_dir: str, config_name: str):  # noqa: D103
 @click.option("--model-path", "-m", type=click.Path(exists=True), required=True, help="Path to model checkpoint (.pt)")
 @click.option("--test-data", "-d", type=click.Path(exists=True), required=True, help="Directory containing test images")
 @click.option("--save-dir", "-s", type=click.Path(), required=True, help="Directory to save evaluation outputs")
+@click.option("--model-structure", type=click.Choice(["HOAM", "HOAMV2"]), default="HOAM", help="Model architecture to instantiate")
+@click.option("--embedding-size", type=int, default=128, help="Embedding dimension used at training")
+@click.option("--image-size", type=int, default=224, help="Image size for resizing")
+@click.option("--mean-std-file", type=click.Path(exists=True), default=None, help="JSON of training mean/std; recommended for reproducible normalization")
 @click.option("--batch-size", type=int, default=64, help="Batch size for evaluation")
-def evaluate(model_path: str, test_data: str, save_dir: str, batch_size: int):  # noqa: D103
+def evaluate(model_path, test_data, save_dir, model_structure, embedding_size, image_size, mean_std_file, batch_size):  # noqa: D103
     """
     Evaluate a trained model on a test dataset.
     """
-    # Load mean/std from cache or compute
+    # Load mean/std from the supplied training-stats file, else fall back to
+    # computing/caching from the dataset directory.
     data_dir = Path(test_data)
-    mean, std = DataStatistics.get_mean_std(data_dir, image_size=None)
+    if mean_std_file:
+        with open(mean_std_file) as f:
+            stats = json.load(f)
+        mean, std = stats['mean'], stats['std']
+    else:
+        mean, std = DataStatistics.get_mean_std(data_dir, image_size=image_size)
  
     # Build dataset and dataloader
-    transforms = build_transforms('val', image_size=None, mean=mean, std=std)
+    transforms = build_transforms('val', image_size=image_size, mean=mean, std=std)
     test_ds = ImageFolder(str(data_dir), transforms)
- 
-    # Load model
-    model = torch.load(model_path)
+
+    # Load model (instantiate architecture, then load the saved state_dict)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model.to(device).eval()
+    model = load_model(model_structure, model_path, embedding_size, device=device)
  
     # Run evaluation
     evaluate_model_on_testset(model, test_ds, save_dir, batch_size, device)

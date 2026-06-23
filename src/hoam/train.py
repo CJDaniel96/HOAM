@@ -279,7 +279,8 @@ def run(cfg: DictConfig) -> None:
         emb_model = LightningModel.load_from_checkpoint(best_ckpt)
         emb_model.eval()
         mean, std = DataStatistics.get_mean_std(Path(cfg.data.data_dir), cfg.data.image_size)
-        transforms = build_transforms('train', cfg.data.image_size, mean, std)
+        # Use eval-time transforms (no augmentation) so the KNN reference index is deterministic
+        transforms = build_transforms('val', cfg.data.image_size, mean, std)
         dataset = ImageFolder(Path(cfg.data.data_dir) / 'train', transforms)
         match_finder = MatchFinder(distance=CosineSimilarity(), threshold=cfg.knn.threshold)
         inf_model = InferenceModel(emb_model.model, match_finder=match_finder)
