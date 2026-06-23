@@ -4,6 +4,7 @@
 
 experiment:
   name: hoam_experiment
+  seed: 42
 
 data:
   data_dir: "/path/to/dataset"
@@ -33,6 +34,7 @@ training:
   freeze_backbone_epochs: 10
   patience: 3
   checkpoint_dir: "checkpoints"
+  deterministic: false
 
 knn:
   enable: false

@@ -22,6 +22,7 @@ from .losses.hybrid_margin import HybridMarginLoss
 from pytorch_metric_learning.losses import SubCenterArcFaceLoss, ArcFaceLoss
 from .data.transforms import build_transforms
 from .data.statistics import DataStatistics
+from .utils import set_seed
  
 # Dynamically set float32 matmul precision to leverage Tensor Cores when available
 if torch.cuda.is_available():
@@ -223,6 +224,8 @@ class LightningModel(pl.LightningModule):
     config_name="config"
 )
 def run(cfg: DictConfig) -> None:
+    set_seed(cfg.experiment.seed)
+
     data_module = HOAMDataModule(
         data_dir=cfg.data.data_dir,
         image_size=cfg.data.image_size,
@@ -253,7 +256,8 @@ def run(cfg: DictConfig) -> None:
         min_epochs=cfg.training.min_epochs,
         max_epochs=cfg.training.max_epochs,
         logger=logger,
-        callbacks=[checkpoint, early_stop, swa]
+        callbacks=[checkpoint, early_stop, swa],
+        deterministic=cfg.training.deterministic
     )
  
     trainer.fit(model, datamodule=data_module)

@@ -4,6 +4,24 @@ from pathlib import Path
 from .models.hoam import HOAM, HOAMV2
  
  
+def set_seed(seed: int = 42, workers: bool = True) -> int:
+    """
+    Seed Python, NumPy and PyTorch RNGs for reproducible runs.
+
+    Delegates to Lightning's ``seed_everything`` so DataLoader workers are also
+    seeded (``workers=True``), which matters for reproducible data augmentation.
+
+    Args:
+        seed: Seed value shared across all RNGs.
+        workers: If True, also seed DataLoader worker processes.
+
+    Returns:
+        The seed that was set.
+    """
+    from lightning.pytorch import seed_everything
+    return seed_everything(seed, workers=workers)
+
+
 def load_model(
     model_structure: str,
     model_path: str,
