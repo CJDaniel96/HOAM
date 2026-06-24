@@ -22,6 +22,7 @@ from .losses.hybrid_margin import HybridMarginLoss
 from pytorch_metric_learning.losses import SubCenterArcFaceLoss, ArcFaceLoss
 from .data.transforms import build_transforms
 from .data.statistics import DataStatistics
+from .utils import set_seed
  
 # Dynamically set float32 matmul precision to leverage Tensor Cores when available
 if torch.cuda.is_available():
@@ -152,13 +153,13 @@ class LightningModel(pl.LightningModule):
         self.freeze_backbone = cfg.training.freeze_backbone_epochs
         self.ema = None
         
-    def set_backbone_requies_grad(self, requires_grad: bool) -> None:
+    def set_backbone_requires_grad(self, requires_grad: bool) -> None:
         for param in self.model.backbone.parameters():
             param.requires_grad = requires_grad
         
     def on_train_start(self):
         if self.freeze_backbone > 0:
-            self.set_backbone_requies_grad(False)
+            self.set_backbone_requires_grad(False)
 
     def on_train_epoch_end(self):
         train_loss = self.trainer.callback_metrics.get('train_loss')
@@ -166,7 +167,7 @@ class LightningModel(pl.LightningModule):
             self.logger.experiment.add_scalar('Loss/train_epoch', train_loss, self.current_epoch)
 
         if self.current_epoch == self.freeze_backbone:
-            self.set_backbone_requies_grad(True)
+            self.set_backbone_requires_grad(True)
             
         current_lr = self.trainer.optimizers[0].param_groups[0]['lr']
         self.log('learning_rate', current_lr, on_epoch=True, logger=True)
@@ -223,6 +224,8 @@ class LightningModel(pl.LightningModule):
     config_name="config"
 )
 def run(cfg: DictConfig) -> None:
+    set_seed(cfg.experiment.seed)
+
     data_module = HOAMDataModule(
         data_dir=cfg.data.data_dir,
         image_size=cfg.data.image_size,
@@ -253,7 +256,8 @@ def run(cfg: DictConfig) -> None:
         min_epochs=cfg.training.min_epochs,
         max_epochs=cfg.training.max_epochs,
         logger=logger,
-        callbacks=[checkpoint, early_stop, swa]
+        callbacks=[checkpoint, early_stop, swa],
+        deterministic=cfg.training.deterministic
     )
  
     trainer.fit(model, datamodule=data_module)
@@ -279,7 +283,8 @@ def run(cfg: DictConfig) -> None:
         emb_model = LightningModel.load_from_checkpoint(best_ckpt)
         emb_model.eval()
         mean, std = DataStatistics.get_mean_std(Path(cfg.data.data_dir), cfg.data.image_size)
-        transforms = build_transforms('train', cfg.data.image_size, mean, std)
+        # Use eval-time transforms (no augmentation) so the KNN reference index is deterministic
+        transforms = build_transforms('val', cfg.data.image_size, mean, std)
         dataset = ImageFolder(Path(cfg.data.data_dir) / 'train', transforms)
         match_finder = MatchFinder(distance=CosineSimilarity(), threshold=cfg.knn.threshold)
         inf_model = InferenceModel(emb_model.model, match_finder=match_finder)

@@ -6,7 +6,7 @@ from .base import OrthogonalFusion, LearnableEdgeLayer, GlobalPooling
  
 class HOAM(nn.Module):
     """
-    MLGModel class for extracting features using EfficientNetV2.
+    HOAM class for extracting features using EfficientNetV2.
 
     Attributes:
         backbone (torch.nn.Module): EfficientNetV2 model for feature extraction.
@@ -20,7 +20,7 @@ class HOAM(nn.Module):
     """
     def __init__(self, backbone_name='efficientnetv2_s', pretrained=False, features_only=True, embedding_size=128) -> None:
         """
-        Initialize the MLGModel instance.
+        Initialize the HOAM instance.
         """
         super().__init__()
         self.backbone = timm.create_model(backbone_name, pretrained=pretrained, features_only=features_only)
@@ -46,6 +46,8 @@ class HOAM(nn.Module):
             nn.SiLU()
         )
         
+        self.global_pool = nn.AdaptiveAvgPool2d(1)
+
         # Orthogonal fusion
         self.orthogonal_fusion = OrthogonalFusion()
         
@@ -61,17 +63,17 @@ class HOAM(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # extract features
         feats = self.backbone(x)
-        local_map = self.local_conv(feats[-2])  # [B, C, H, W]
+        local_map = self.local_branch_conv(feats[-2])  # [B, C, H, W]
         B, C, H, W = local_map.shape
         # prepare for attention: [H, W, B, C]
         local_flat = local_map.flatten(2).permute(2, 0, 1)
-        attn_out, _ = self.attn(local_flat, local_flat, local_flat)
+        attn_out, _ = self.local_branch_attention(local_flat, local_flat, local_flat)
         local_feat = attn_out.permute(1, 2, 0).view(B, C, H, W)
 
-        global_feat = self.global_pool(feats[-1]).view(B, -1)
-        global_feat = self.global_fc(global_feat)
+        global_feat = self.global_branch(feats[-1])
+        global_feat = self.global_pool(global_feat).view(B, -1)
  
-        fused = self.fusion(local_feat, global_feat)
+        fused = self.orthogonal_fusion(local_feat, global_feat)
         return self.head(fused)
  
  

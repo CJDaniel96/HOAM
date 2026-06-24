@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Union
  
 torch = __import__('torch')
 from torch import Tensor
@@ -71,6 +71,13 @@ class DataStatistics:
                 stats = json.load(f)
             return stats['mean'], stats['std']
  
+        if image_size is None:
+            raise ValueError(
+                f"No cached stats found at {cache_path} and image_size is None, "
+                "so stats cannot be computed. Provide a mean_std.json (see "
+                "DataStatistics.load_mean_std) or pass an image_size."
+            )
+
         # Create DataLoader without normalization
         transform = build_transforms(mode='test', image_size=image_size)
         dataset = ImageFolder(str(data_dir / 'train'), transform)
@@ -88,3 +95,18 @@ class DataStatistics:
             json.dump({'mean': mean, 'std': std}, f, indent=2)
  
         return mean, std
+
+    @staticmethod
+    def load_mean_std(path: Union[str, Path]) -> Tuple[List[float], List[float]]:
+        """
+        Load mean and std from a JSON file produced by get_mean_std.
+
+        Args:
+            path: Path to a JSON file containing {"mean": [...], "std": [...]}.
+
+        Returns:
+            Tuple of mean list and std list.
+        """
+        with open(path) as f:
+            stats = json.load(f)
+        return stats['mean'], stats['std']

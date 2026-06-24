@@ -4,10 +4,29 @@ from pathlib import Path
 from .models.hoam import HOAM, HOAMV2
  
  
+def set_seed(seed: int = 42, workers: bool = True) -> int:
+    """
+    Seed Python, NumPy and PyTorch RNGs for reproducible runs.
+
+    Delegates to Lightning's ``seed_everything`` so DataLoader workers are also
+    seeded (``workers=True``), which matters for reproducible data augmentation.
+
+    Args:
+        seed: Seed value shared across all RNGs.
+        workers: If True, also seed DataLoader worker processes.
+
+    Returns:
+        The seed that was set.
+    """
+    from lightning.pytorch import seed_everything
+    return seed_everything(seed, workers=workers)
+
+
 def load_model(
     model_structure: str,
     model_path: str,
-    embedding_size: int
+    embedding_size: int,
+    device: str | None = None,
 ) -> torch.nn.Module:
     """
     Load a pretrained model for inference.
@@ -16,6 +35,7 @@ def load_model(
         model_structure: Name of the model class (e.g., 'HOAM', 'HOAMV2').
         model_path: Path to the saved model state_dict (.pt file).
         embedding_size: Embedding dimension used at training.
+        device: Target device; defaults to CUDA when available, else CPU.
  
     Returns:
         Initialized model in eval mode.
@@ -34,7 +54,9 @@ def load_model(
         state = state['state_dict']
     model.load_state_dict(state)
     model.eval()
-    model.cuda()
+    if device is None:
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model.to(device)
     return model
  
  

@@ -151,8 +151,7 @@ def match_inference(
  
 def main(opt):
     """Entry point for inference."""
-    mean_std_file = Path(opt.mean_std_file)
-    mean, std = DataStatistics.get_mean_std(mean_std_file.parent, image_size=None)
+    mean, std = DataStatistics.load_mean_std(opt.mean_std_file)
     unnormalize = UnNormalize(mean, std)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
