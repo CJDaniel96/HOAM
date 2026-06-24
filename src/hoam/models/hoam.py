@@ -6,7 +6,7 @@ from .base import OrthogonalFusion, LearnableEdgeLayer, GlobalPooling
  
 class HOAM(nn.Module):
     """
-    MLGModel class for extracting features using EfficientNetV2.
+    HOAM class for extracting features using EfficientNetV2.
 
     Attributes:
         backbone (torch.nn.Module): EfficientNetV2 model for feature extraction.
@@ -20,7 +20,7 @@ class HOAM(nn.Module):
     """
     def __init__(self, backbone_name='efficientnetv2_s', pretrained=False, features_only=True, embedding_size=128) -> None:
         """
-        Initialize the MLGModel instance.
+        Initialize the HOAM instance.
         """
         super().__init__()
         self.backbone = timm.create_model(backbone_name, pretrained=pretrained, features_only=features_only)

@@ -153,13 +153,13 @@ class LightningModel(pl.LightningModule):
         self.freeze_backbone = cfg.training.freeze_backbone_epochs
         self.ema = None
         
-    def set_backbone_requies_grad(self, requires_grad: bool) -> None:
+    def set_backbone_requires_grad(self, requires_grad: bool) -> None:
         for param in self.model.backbone.parameters():
             param.requires_grad = requires_grad
         
     def on_train_start(self):
         if self.freeze_backbone > 0:
-            self.set_backbone_requies_grad(False)
+            self.set_backbone_requires_grad(False)
 
     def on_train_epoch_end(self):
         train_loss = self.trainer.callback_metrics.get('train_loss')
@@ -167,7 +167,7 @@ class LightningModel(pl.LightningModule):
             self.logger.experiment.add_scalar('Loss/train_epoch', train_loss, self.current_epoch)
 
         if self.current_epoch == self.freeze_backbone:
-            self.set_backbone_requies_grad(True)
+            self.set_backbone_requires_grad(True)
             
         current_lr = self.trainer.optimizers[0].param_groups[0]['lr']
         self.log('learning_rate', current_lr, on_epoch=True, logger=True)

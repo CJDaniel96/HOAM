@@ -1,5 +1,3 @@
-import json
-
 import click
 from pathlib import Path
 from hydra import initialize_config_dir, compose
@@ -65,9 +63,7 @@ def evaluate(model_path, test_data, save_dir, model_structure, embedding_size, i
     # computing/caching from the dataset directory.
     data_dir = Path(test_data)
     if mean_std_file:
-        with open(mean_std_file) as f:
-            stats = json.load(f)
-        mean, std = stats['mean'], stats['std']
+        mean, std = DataStatistics.load_mean_std(mean_std_file)
     else:
         mean, std = DataStatistics.get_mean_std(data_dir, image_size=image_size)
  
