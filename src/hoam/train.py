@@ -218,6 +218,21 @@ class LightningModel(pl.LightningModule):
         }
  
  
+def _extract_model_state_dict(ckpt_path: str) -> dict:
+    """
+    Load a Lightning checkpoint and return the wrapped model's state_dict.
+
+    Avoids LightningModel.load_from_checkpoint, which unpickles the Hydra
+    DictConfig stored in the checkpoint hparams and fails under PyTorch 2.6's
+    weights_only=True default. The checkpoint is produced by this run (trusted),
+    so weights_only=False is safe here.
+    """
+    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    state_dict = ckpt["state_dict"]
+    prefix = "model."
+    return {k[len(prefix):]: v for k, v in state_dict.items() if k.startswith(prefix)}
+
+
 @main(
     version_base="1.3",
     config_path=str(Path(__file__).parents[2] / "configs"),
@@ -262,15 +277,14 @@ def run(cfg: DictConfig) -> None:
  
     trainer.fit(model, datamodule=data_module)
 
-    # Save best and last weights
+    # Save best and last model weights as plain state_dicts (for inference/eval).
+    ckpt_dir = Path(cfg.training.checkpoint_dir)
     best_ckpt = checkpoint.best_model_path
     last_ckpt = checkpoint.last_model_path
-    if model:
-        best_model = LightningModel.load_from_checkpoint(best_ckpt)
-        torch.save(best_model.model.state_dict(), str(Path(cfg.training.checkpoint_dir) / 'best.pt'))
-        
-        last_model = LightningModel.load_from_checkpoint(last_ckpt)
-        torch.save(last_model.model.state_dict(), str(Path(cfg.training.checkpoint_dir) / 'last.pt'))
+    if best_ckpt:
+        torch.save(_extract_model_state_dict(best_ckpt), str(ckpt_dir / 'best.pt'))
+    if last_ckpt:
+        torch.save(_extract_model_state_dict(last_ckpt), str(ckpt_dir / 'last.pt'))
 
     # Save config and mean_std
     OmegaConf.save(config=cfg, f=str(Path(cfg.training.checkpoint_dir) / 'config_used.yaml'))
@@ -279,15 +293,17 @@ def run(cfg: DictConfig) -> None:
         shutil.copy(str(mean_src), str(Path(cfg.training.checkpoint_dir) / 'mean_std.json'))
  
     # Optional KNN
-    if cfg.knn.enable:
-        emb_model = LightningModel.load_from_checkpoint(best_ckpt)
-        emb_model.eval()
+    if cfg.knn.enable and best_ckpt:
+        # Load best weights into the in-memory model (built from cfg, so the
+        # backbone matches) and build the KNN index from it.
+        model.model.load_state_dict(_extract_model_state_dict(best_ckpt))
+        model.eval()
         mean, std = DataStatistics.get_mean_std(Path(cfg.data.data_dir), cfg.data.image_size)
         # Use eval-time transforms (no augmentation) so the KNN reference index is deterministic
         transforms = build_transforms('val', cfg.data.image_size, mean, std)
         dataset = ImageFolder(Path(cfg.data.data_dir) / 'train', transforms)
         match_finder = MatchFinder(distance=CosineSimilarity(), threshold=cfg.knn.threshold)
-        inf_model = InferenceModel(emb_model.model, match_finder=match_finder)
+        inf_model = InferenceModel(model.model, match_finder=match_finder)
         inf_model.train_knn(dataset)
         inf_model.save_knn_func(str(Path(cfg.training.checkpoint_dir) / cfg.knn.index_path))
         joblib.dump(dataset, str(Path(cfg.training.checkpoint_dir) / cfg.knn.dataset_pkl))
