@@ -114,8 +114,15 @@ def knn_inference(
 def _knn_single(path, inf_model, image_size, dataset, classes, unnormalize, k, mean, std, save_dir, device):
     tensor = process_image(path, build_transforms('test', image_size, mean, std), device)
     _, indices = inf_model.get_nearest_neighbors(tensor, k)
-    idx = indices[0][0]
-    label = classes[idx]
+    idx = int(indices[0][0])
+    if hasattr(dataset, 'targets'):
+        class_id = int(dataset.targets[idx])
+    elif hasattr(dataset, 'samples'):
+        class_id = int(dataset.samples[idx][1])
+    else:
+        _, class_id = dataset[idx]
+        class_id = int(class_id)
+    label = classes[class_id]
     result_img, _ = dataset[idx]
     img = unnormalize(result_img)
     save_image(img, save_dir / f"{label}_top1.jpg")

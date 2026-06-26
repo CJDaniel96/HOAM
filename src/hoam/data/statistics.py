@@ -3,12 +3,13 @@ from pathlib import Path
 from typing import List, Tuple, Union
  
 torch = __import__('torch')
-from torch import Tensor
 from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
+from torchvision import transforms
  
-from .transforms import build_transforms
- 
+CACHE_VERSION = 2
+CACHE_COMPUTED_ON = "raw_resized_tensor"
+
  
 class DataStatistics:
     """
@@ -29,19 +30,19 @@ class DataStatistics:
             Tuple of two lists: means and stds for each channel.
         """
         n_channels = next(iter(dataloader))[0].shape[1]
-        mean = torch.zeros(n_channels)
-        std = torch.zeros(n_channels)
-        total_samples = 0
+        channel_sum = torch.zeros(n_channels)
+        channel_squared_sum = torch.zeros(n_channels)
+        total_pixels = 0
  
         for imgs, _ in dataloader:
-            batch_samples = imgs.size(0)
-            imgs = imgs.view(batch_samples, n_channels, -1)
-            mean += imgs.mean(2).sum(0)
-            std += imgs.std(2).sum(0)
-            total_samples += batch_samples
+            imgs = imgs.view(imgs.size(0), n_channels, -1)
+            channel_sum += imgs.sum(dim=(0, 2))
+            channel_squared_sum += (imgs ** 2).sum(dim=(0, 2))
+            total_pixels += imgs.size(0) * imgs.size(2)
  
-        mean /= total_samples
-        std /= total_samples
+        mean = channel_sum / total_pixels
+        variance = channel_squared_sum / total_pixels - mean ** 2
+        std = torch.sqrt(torch.clamp(variance, min=0.0))
         return mean.tolist(), std.tolist()
  
     @staticmethod
@@ -69,7 +70,11 @@ class DataStatistics:
         if cache_path.exists():
             with cache_path.open('r') as f:
                 stats = json.load(f)
-            return stats['mean'], stats['std']
+            if (
+                stats.get('version') == CACHE_VERSION
+                and stats.get('computed_on') == CACHE_COMPUTED_ON
+            ):
+                return stats['mean'], stats['std']
  
         if image_size is None:
             raise ValueError(
@@ -78,8 +83,12 @@ class DataStatistics:
                 "DataStatistics.load_mean_std) or pass an image_size."
             )
 
-        # Create DataLoader without normalization
-        transform = build_transforms(mode='test', image_size=image_size)
+        # Compute statistics on resized raw tensors. Do not reuse
+        # build_transforms('test'), because it applies normalization.
+        transform = transforms.Compose([
+            transforms.Resize((image_size, image_size)),
+            transforms.ToTensor(),
+        ])
         dataset = ImageFolder(str(data_dir / 'train'), transform)
         loader = DataLoader(
             dataset,
@@ -92,7 +101,12 @@ class DataStatistics:
  
         # Save to cache
         with cache_path.open('w') as f:
-            json.dump({'mean': mean, 'std': std}, f, indent=2)
+            json.dump({
+                'mean': mean,
+                'std': std,
+                'version': CACHE_VERSION,
+                'computed_on': CACHE_COMPUTED_ON,
+            }, f, indent=2)
  
         return mean, std
 
