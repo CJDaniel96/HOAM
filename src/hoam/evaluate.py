@@ -4,11 +4,69 @@ from typing import Dict, Union
 
 import pandas as pd
 import torch
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
-from pytorch_metric_learning.utils.accuracy_calculator import AccuracyCalculator
 from sklearn.metrics import silhouette_score
 
 from .metrics import classification_metrics, save_classification_outputs
+
+
+def _retrieval_metrics(
+    embeddings: torch.Tensor,
+    labels: torch.Tensor,
+    k: int = 10,
+) -> Dict[str, float]:
+    """
+    Compute retrieval metrics without FAISS-backed helpers.
+
+    The PyTorch Metric Learning AccuracyCalculator defaults to FAISS, which can
+    segfault on some CPU-only/macOS environments. A small cosine-similarity
+    implementation is enough for evaluation sets handled by this CLI.
+    """
+    if embeddings.size(0) < 2:
+        raise ValueError("Need at least 2 samples for retrieval metrics.")
+
+    emb = F.normalize(embeddings.float(), p=2, dim=1)
+    labels = labels.view(-1)
+    n = emb.size(0)
+    k_eff = max(1, min(k, n - 1))
+
+    similarities = emb @ emb.T
+    similarities.fill_diagonal_(float("-inf"))
+    ranked_indices = similarities.argsort(dim=1, descending=True)[:, :k_eff]
+    ranked_labels = labels[ranked_indices]
+    query_labels = labels.unsqueeze(1)
+    matches = ranked_labels.eq(query_labels)
+
+    precision_at_1 = matches[:, 0].float().mean().item()
+    average_precisions = []
+    reciprocal_ranks = []
+
+    ranks = torch.arange(1, k_eff + 1, dtype=torch.float32)
+    for query_idx in range(n):
+        query_matches = matches[query_idx].float()
+        total_relevant = int(labels.eq(labels[query_idx]).sum().item()) - 1
+        if total_relevant <= 0:
+            average_precisions.append(0.0)
+            reciprocal_ranks.append(0.0)
+            continue
+
+        cumulative_matches = torch.cumsum(query_matches, dim=0)
+        precision_at_ranks = cumulative_matches / ranks
+        ap = (precision_at_ranks * query_matches).sum() / min(total_relevant, k_eff)
+        average_precisions.append(float(ap.item()))
+
+        relevant_rank = torch.nonzero(query_matches, as_tuple=False)
+        if relevant_rank.numel() == 0:
+            reciprocal_ranks.append(0.0)
+        else:
+            reciprocal_ranks.append(1.0 / float(relevant_rank[0].item() + 1))
+
+    return {
+        "precision_at_1": float(precision_at_1),
+        "mean_average_precision": float(sum(average_precisions) / n),
+        "mean_reciprocal_rank": float(sum(reciprocal_ranks) / n),
+    }
 
 
 def evaluate_model_on_testset(
@@ -57,14 +115,9 @@ def evaluate_model_on_testset(
     embeddings = torch.cat(all_embeddings)
     labels = torch.cat(all_labels)
 
-    # Query and reference are the same set. Passing only (query, labels) lets
-    # AccuracyCalculator set ref_includes_query=True and exclude each point's
-    # self-match; otherwise precision_at_1 is trivially 1.0.
-    acc_calc = AccuracyCalculator(
-        include=('precision_at_1', 'mean_average_precision', 'mean_reciprocal_rank'),
-        k=10,
-    )
-    metrics = acc_calc.get_accuracy(embeddings, labels)
+    # Query and reference are the same set, so exclude each point's self-match;
+    # otherwise precision_at_1 would be trivially 1.0.
+    metrics = _retrieval_metrics(embeddings, labels, k=10)
 
     # Clustering quality of the embedding space.
     metrics['silhouette_score'] = float(

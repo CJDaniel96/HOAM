@@ -55,7 +55,8 @@ class HOAMDataModule(pl.LightningDataModule):
         if platform.system() == "Windows":
             self.num_workers = 0
         else:
-            self.num_workers = min(num_workers or cpu_count, cpu_count)
+            requested_workers = cpu_count if num_workers is None else num_workers
+            self.num_workers = min(requested_workers, cpu_count)
  
         self.data_dir = Path(data_dir)
         self.image_size = image_size
@@ -65,6 +66,7 @@ class HOAMDataModule(pl.LightningDataModule):
         mean, std = DataStatistics.get_mean_std(
             self.data_dir,
             self.image_size,
+            num_workers=self.num_workers,
             cache_file="mean_std.json"
         )
         self.train_ds = ImageFolder(
