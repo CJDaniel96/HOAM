@@ -27,6 +27,8 @@ def load_model(
     model_path: str,
     embedding_size: int,
     device: str | None = None,
+    backbone_name: str | None = None,
+    pretrained: bool = False,
 ) -> torch.nn.Module:
     """
     Load a pretrained model for inference.
@@ -36,6 +38,9 @@ def load_model(
         model_path: Path to the saved model state_dict (.pt file).
         embedding_size: Embedding dimension used at training.
         device: Target device; defaults to CUDA when available, else CPU.
+        backbone_name: Optional timm backbone name used at training.
+        pretrained: Whether to initialize the backbone with pretrained weights
+            before loading the state_dict. Usually False for inference.
  
     Returns:
         Initialized model in eval mode.
@@ -48,7 +53,10 @@ def load_model(
         raise ValueError(f"Unsupported model structure: {model_structure}")
     model_cls = model_classes[model_structure]
     # instantiate with same args as training
-    model = model_cls(embedding_size=embedding_size)
+    model_kwargs = {'embedding_size': embedding_size, 'pretrained': pretrained}
+    if backbone_name:
+        model_kwargs['backbone_name'] = backbone_name
+    model = model_cls(**model_kwargs)
     state = torch.load(model_path, map_location='cpu')
     if isinstance(state, dict) and 'state_dict' in state:
         state = state['state_dict']

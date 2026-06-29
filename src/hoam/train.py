@@ -1,12 +1,9 @@
 import os
 import torch
 import shutil
-import joblib
 from pathlib import Path
 from hydra import main
 from omegaconf import DictConfig, OmegaConf
-from pytorch_metric_learning.utils.inference import InferenceModel, MatchFinder
-from pytorch_metric_learning.distances import CosineSimilarity
 from pytorch_metric_learning.samplers import MPerClassSampler
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader
@@ -22,6 +19,7 @@ from .losses.hybrid_margin import HybridMarginLoss
 from pytorch_metric_learning.losses import SubCenterArcFaceLoss, ArcFaceLoss
 from .data.transforms import build_transforms
 from .data.statistics import DataStatistics
+from .knn import build_knn_index
 from .utils import set_seed
  
 # Dynamically set float32 matmul precision to leverage Tensor Cores when available
@@ -296,19 +294,21 @@ def run(cfg: DictConfig) -> None:
  
     # Optional KNN
     if cfg.knn.enable and best_ckpt:
-        # Load best weights into the in-memory model (built from cfg, so the
-        # backbone matches) and build the KNN index from it.
-        model.model.load_state_dict(_extract_model_state_dict(best_ckpt))
-        model.eval()
-        mean, std = DataStatistics.get_mean_std(Path(cfg.data.data_dir), cfg.data.image_size)
-        # Use eval-time transforms (no augmentation) so the KNN reference index is deterministic
-        transforms = build_transforms('val', cfg.data.image_size, mean, std)
-        dataset = ImageFolder(Path(cfg.data.data_dir) / 'train', transforms)
-        match_finder = MatchFinder(distance=CosineSimilarity(), threshold=cfg.knn.threshold)
-        inf_model = InferenceModel(model.model, match_finder=match_finder)
-        inf_model.train_knn(dataset)
-        inf_model.save_knn_func(str(Path(cfg.training.checkpoint_dir) / cfg.knn.index_path))
-        joblib.dump(dataset, str(Path(cfg.training.checkpoint_dir) / cfg.knn.dataset_pkl))
+        build_knn_index(
+            model_structure=cfg.model.structure,
+            model_path=ckpt_dir / 'best.pt',
+            data_dir=cfg.data.data_dir,
+            save_dir=cfg.training.checkpoint_dir,
+            embedding_size=cfg.model.embedding_size,
+            image_size=cfg.data.image_size,
+            mean_std_file=ckpt_dir / 'mean_std.json',
+            backbone_name=cfg.model.backbone,
+            index_path=cfg.knn.index_path,
+            dataset_pkl=cfg.knn.dataset_pkl,
+            threshold=cfg.knn.threshold,
+            batch_size=cfg.training.batch_size,
+            num_workers=cfg.data.num_workers,
+        )
  
     print("Training run complete.")
  

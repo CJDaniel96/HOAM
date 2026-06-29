@@ -98,7 +98,7 @@ hoam evaluate \
 
 ### 4. KNN 推論
 
-KNN 模式需要先建立 reference index。訓練時打開 `knn.enable=true` 後，流程會用 train set 建立 `knn.index` 與 `dataset.pkl`：
+KNN 模式需要先建立 reference index。若訓練前已知道要做 KNN，可在訓練時打開 `knn.enable=true`，流程會用 train set 建立 `knn.index` 與 `dataset.pkl`：
 
 ```bash
 python -m hoam.train \
@@ -106,12 +106,34 @@ python -m hoam.train \
   knn.enable=true
 ```
 
+若模型已經訓練完成、但當時忘記設定 `knn.enable=true`，不需要重新訓練；直接用既有的 `best.pt` 補建 index 即可：
+
+```bash
+hoam build-knn \
+  --model-path checkpoints/best.pt \
+  --data-dir /path/to/data \
+  --save-dir checkpoints
+```
+
+`hoam build-knn` 會優先讀取 `checkpoints/config_used.yaml` 推斷 `model.structure`、`model.backbone`、`embedding_size` 和 `image_size`。若沒有 `config_used.yaml`，請明確指定訓練時的模型設定，例如 HOAMV2：
+
+```bash
+hoam build-knn \
+  --model-path checkpoints/best.pt \
+  --data-dir /path/to/data \
+  --save-dir checkpoints \
+  --model-structure HOAMV2 \
+  --backbone efficientnetv2_rw_s \
+  --embedding-size 128 \
+  --image-size 224 \
+  --mean-std-file checkpoints/mean_std.json
+```
+
 完成後使用同一個 checkpoint 目錄中的 `best.pt`、`mean_std.json`、`knn.index`、`dataset.pkl`：
 
 ```bash
 hoam infer \
   --mode knn \
-  --model-structure HOAM \
   --model-path checkpoints/best.pt \
   --mean-std-file checkpoints/mean_std.json \
   --dataset-pkl checkpoints/dataset.pkl \
@@ -120,6 +142,8 @@ hoam infer \
   --save-dir knn_out/ \
   --k 5
 ```
+
+`hoam infer` 也會優先讀取 `checkpoints/config_used.yaml` 推斷模型設定。若 checkpoint 旁沒有 `config_used.yaml`，請加上 `--model-structure HOAMV2 --backbone <訓練時使用的 backbone>`。
 
 輸出 `knn_out/top1.json` 與 Top-1 圖片。
 
@@ -147,6 +171,7 @@ hoam infer \
 | --- | --- |
 | `hoam train` | 以 Hydra config + PyTorch Lightning 訓練（`--config-dir`、`--config-name`） |
 | `hoam evaluate` | 在測試集上計算 retrieval 與分類指標 |
+| `hoam build-knn` | 使用已訓練模型與 train set 補建 KNN reference index |
 | `hoam infer` | KNN / Match 推論 |
 
 `hoam <cmd> --help` 可查看各指令選項。

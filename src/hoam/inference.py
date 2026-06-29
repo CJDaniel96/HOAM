@@ -6,6 +6,7 @@ from pathlib import Path
  
 import torch
 import cv2
+from omegaconf import OmegaConf
 from PIL import Image
 from torchvision.utils import save_image
  
@@ -31,15 +32,17 @@ def parse_opt(known: bool = False):
     parser.add_argument('--mode', type=str, choices=['knn', 'match'], default='knn')
     parser.add_argument('--data', type=str, required=True, help='Image or directory for inference')
     parser.add_argument('--query-image', type=str, default='', help='Query image for match mode')
-    parser.add_argument('--image-size', type=int, default=224, help='Image size for inference')
+    parser.add_argument('--image-size', type=int, default=None, help='Image size for inference')
     parser.add_argument('--dataset-pkl', type=str, default='dataset.pkl', help='Pickled dataset for KNN')
     parser.add_argument('--faiss-index', type=str, default='', help='FAISS index path')
     parser.add_argument('--threshold', type=float, default=0.5, help='Threshold for match mode')
     parser.add_argument('--k', type=int, default=5, help='Top-K for KNN mode')
     parser.add_argument('--mean-std-file', type=str, default='mean_std.json', help='Mean/std cache')
-    parser.add_argument('--model-structure', type=str, default='HOAM', choices=['HOAM', 'HOAMV2'], help='Model to load')
+    parser.add_argument('--model-structure', type=str, default=None, choices=['HOAM', 'HOAMV2'], help='Model to load')
+    parser.add_argument('--backbone', type=str, default=None, help='Backbone name used during training')
+    parser.add_argument('--config-file', type=str, default='', help='Training config_used.yaml')
     parser.add_argument('--model-path', type=str, required=True, help='Path to model .pt file')
-    parser.add_argument('--embedding-size', type=int, default=128, help='Embedding dimension')
+    parser.add_argument('--embedding-size', type=int, default=None, help='Embedding dimension')
     parser.add_argument('--save-dir', type=str, required=True, help='Directory to save results')
     if known:
         return parser.parse_known_args()[0]
@@ -51,17 +54,34 @@ def create_inference_model(
     model_path: str,
     embedding_size: int,
     faiss_index: str,
-    threshold: float
+    threshold: float,
+    backbone_name: str | None = None,
 ) -> InferenceModel:
     """
     Create a PML InferenceModel with KNN or match finder.
     """
-    model = load_model(model_structure, model_path, embedding_size)
+    model = load_model(model_structure, model_path, embedding_size, backbone_name=backbone_name)
     match_finder = MatchFinder(distance=CosineSimilarity(), threshold=threshold)
     inf_model = InferenceModel(model, match_finder=match_finder)
     if faiss_index:
         inf_model.load_knn_func(faiss_index)
     return inf_model
+
+
+def apply_config_defaults(opt):
+    """Fill omitted inference options from config_used.yaml when available."""
+    config_path = Path(opt.config_file) if opt.config_file else Path(opt.model_path).parent / "config_used.yaml"
+    if config_path.exists():
+        cfg = OmegaConf.load(config_path)
+        opt.model_structure = opt.model_structure or cfg.model.structure
+        opt.backbone = opt.backbone or cfg.model.backbone
+        opt.embedding_size = opt.embedding_size or cfg.model.embedding_size
+        opt.image_size = opt.image_size or cfg.data.image_size
+
+    opt.model_structure = opt.model_structure or 'HOAM'
+    opt.embedding_size = opt.embedding_size or 128
+    opt.image_size = opt.image_size or 224
+    return opt
  
  
 def load_dataset(dataset_pkl: str):
@@ -158,6 +178,7 @@ def match_inference(
  
 def main(opt):
     """Entry point for inference."""
+    opt = apply_config_defaults(opt)
     mean, std = DataStatistics.load_mean_std(opt.mean_std_file)
     unnormalize = UnNormalize(mean, std)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -167,7 +188,8 @@ def main(opt):
         opt.model_path,
         opt.embedding_size,
         opt.faiss_index,
-        opt.threshold
+        opt.threshold,
+        opt.backbone
     )
  
     if opt.mode == 'knn':
