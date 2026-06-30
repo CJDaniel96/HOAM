@@ -6,6 +6,7 @@ from .train import run as hydra_run
 from .evaluate import evaluate_model_on_testset
 from .inference import main as inference_main, parse_opt as parse_infer_opt
 from .knn import build_knn_index
+from .visualize import create_eval_charts
 from .data.statistics import DataStatistics
 from .data.transforms import build_transforms
 from .utils import load_model
@@ -17,7 +18,7 @@ import torch
 @click.version_option(version="0.1.0")
 def cli():
     """
-    HOAM Project CLI: train, evaluate, build-knn, infer
+    HOAM Project CLI: train, evaluate, plot-eval, build-knn, infer
     """
     pass
  
@@ -81,6 +82,21 @@ def evaluate(model_path, test_data, save_dir, model_structure, embedding_size, i
     click.echo(f"Evaluation results saved to {save_dir}")
  
  
+@cli.command("plot-eval")
+@click.option("--eval-dir", "-e", type=click.Path(exists=True, file_okay=False), required=True, help="Directory containing test_metrics.json, classification_report.csv and confusion_matrix.csv")
+@click.option("--output-dir", "-o", type=click.Path(), default=None, help="Directory to save charts; defaults to <eval-dir>/charts")
+@click.option("--top-n", type=int, default=40, help="Maximum number of classes to show in per-class charts")
+@click.option("--sort-by", type=click.Choice(["precision", "recall", "f1", "support"]), default="f1", help="Metric used to select/sort classes")
+def plot_eval(eval_dir, output_dir, top_n, sort_by):  # noqa: D103
+    """
+    Create SVG charts and an HTML dashboard from evaluation CSV/JSON outputs.
+    """
+    paths = create_eval_charts(eval_dir, output_dir=output_dir, top_n=top_n, sort_by=sort_by)
+    click.echo("Evaluation charts saved:")
+    for path in paths:
+        click.echo(f"  {path}")
+
+
 def _read_config_defaults(config_file: str | None, model_path: str) -> DictConfig | None:
     config_path = Path(config_file) if config_file else Path(model_path).parent / "config_used.yaml"
     if config_path.exists():

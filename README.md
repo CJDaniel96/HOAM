@@ -96,7 +96,27 @@ hoam evaluate \
 - 若訓練的是 HOAMV2，請把 `--model-structure` 改成 `HOAMV2`。
 - 輸出：`eval_out/test_metrics.json`、`test_metrics.csv`（retrieval + 分類 scalar）、`classification_report.csv`（每類別 P/R/F1）、`confusion_matrix.csv`。
 
-### 4. KNN 推論
+### 4. 評估圖表
+
+評估完成後，可用 `classification_report.csv`、`confusion_matrix.csv`、`test_metrics.json` / `test_metrics.csv` 產生 SVG 圖表與 HTML dashboard：
+
+```bash
+hoam plot-eval \
+  --eval-dir eval_out \
+  --output-dir eval_out/charts
+```
+
+輸出：
+
+- `dashboard.html`：整體報表，可用瀏覽器開啟。
+- `metrics_overview.svg`：整體 accuracy / F1 / mAP / MRR 等指標。
+- `per_class_metrics.svg`：每類別 precision / recall / F1。
+- `confusion_matrix.svg`：原始 confusion matrix。
+- `confusion_matrix_normalized.svg`：依真實類別正規化後的 confusion matrix。
+
+若類別很多，可用 `--top-n 30 --sort-by f1` 控制每類別圖表顯示的類別數。
+
+### 5. KNN 推論
 
 KNN 模式需要先建立 reference index。若訓練前已知道要做 KNN，可在訓練時打開 `knn.enable=true`，流程會用 train set 建立 `knn.index` 與 `dataset.pkl`：
 
@@ -147,7 +167,7 @@ hoam infer \
 
 輸出 `knn_out/top1.json` 與 Top-1 圖片。
 
-### 5. 匹配推論
+### 6. 匹配推論
 
 ```bash
 hoam infer \
@@ -171,6 +191,7 @@ hoam infer \
 | --- | --- |
 | `hoam train` | 以 Hydra config + PyTorch Lightning 訓練（`--config-dir`、`--config-name`） |
 | `hoam evaluate` | 在測試集上計算 retrieval 與分類指標 |
+| `hoam plot-eval` | 從評估輸出的 CSV/JSON 產生 SVG 圖表與 HTML dashboard |
 | `hoam build-knn` | 使用已訓練模型與 train set 補建 KNN reference index |
 | `hoam infer` | KNN / Match 推論 |
 
@@ -188,6 +209,7 @@ hoam/
 │   ├── cli.py               # `hoam` CLI：train / evaluate / infer
 │   ├── train.py             # Lightning 訓練（DataModule + LightningModule + Trainer）
 │   ├── evaluate.py          # retrieval + 分類指標
+│   ├── visualize.py         # 評估圖表 / dashboard
 │   ├── inference.py         # KNN / Match 推論
 │   ├── utils.py             # load_model、set_seed、UnNormalize
 │   ├── metrics.py           # k-NN 分類指標（accuracy / P / R / F1 / confusion）
